@@ -46,6 +46,7 @@ vercel integration add neon --name helicon-db   # accept the marketplace terms i
                                                 # vercel integration accept-terms neon
 vercel env pull                                 # writes .env.local, gitignored
 npm run db:schema                               # runs scripts/schema.sql, prints the tables
+npm run db:load                                 # loads the event feed, ~10s
 ```
 
 `db:schema` connects on `DATABASE_URL_UNPOOLED`, the direct connection rather than
@@ -132,12 +133,25 @@ number, while cycle units overshoot the order by 85 to 238 (median 1.48x
 feed-wide). Nothing downstream reconciles against a cycle quantity, so a +/-1
 there is unverifiable. job_0166 never completed and has no inspections at all.
 
-**Open decision.** The stake is 3 net units against 126,168 cycle units, but the
-rule also governs the next conflict, which may not be this harmless:
+**Decided: keep the last, as a restatement.** The stake is only 3 net units
+against 126,168, but the rule also governs the next conflict, which may not be
+this harmless, and a producer that sends a row twice is more likely correcting
+itself than duplicating at random.
 
-1. Keep the first (what the schema does today: PK on `event_id`, `ON CONFLICT DO NOTHING`, `process_event` returns false so the loader logs the drop)
-2. Keep the last, treating a repeat as a restatement. The ledger stops being append-only
-3. Keep `LEAST(quantity)`, which gives the same result under any replay order
+The cost is real. The ledger is no longer strictly append-only for a repeated
+id, and a rewritten payload invalidates counters already accumulated from the
+old one. Rather than teach `apply_event` to subtract, which every event would
+then pay for, `process_event` calls `rebuild_job` and replays that one job from
+the ledger. So a repeated `event_id` has three outcomes:
+
+| Outcome | When | What happens |
+|---|---|---|
+| `applied` | new id | insert, then `apply_event` |
+| `restated` | id seen, payload differs | overwrite the row, then `rebuild_job` |
+| `unchanged` | id seen, payload identical | nothing at all |
+
+The 14 identical repeats cost nothing. Only the 5 real restatements trigger a
+rebuild. Loading the feed reports all 19 by id.
 
 ## Database design
 
@@ -153,10 +167,11 @@ by carrying something beyond the code: a part states its material, a machine cod
 states its kind. Facility, tool, material and badge stay as values on the events.
 `users` is a login and writes nothing.
 
-Three functions: `apply_event` (the projection, the only thing that moves a
-counter), `process_event` (registries, then the ledger insert as the dedupe gate,
-then apply), and `rebuild_jobs` (truncate and replay the ledger in `occurred_at`
-order). Eight `dq_` views, one per anomaly found in the data.
+Five functions: `apply_event` (the projection, the only thing that moves a
+counter), `process_event` (registries, then the ledger write, then apply or
+repair), `process_events` (one round trip per batch, in order), `rebuild_job`
+(replay one job) and `rebuild_jobs` (replay all of them). Eight `dq_` views, one
+per anomaly found in the data.
 
 ## Product
 
@@ -195,16 +210,45 @@ Rules that flag a job at risk of delay, delivery failure or bad data:
 3. Job page
 4. Home page
 
+## Loading the feed
+
+`npm run db:load` runs `scripts/load-events.mjs`: one transaction that truncates,
+then sends the 19,519 lines through `process_events` in batches of 500, about 10
+seconds against Neon. Every line goes through the same `process_event` the live
+path would use, so the run reports what the database actually did with it:
+
+```
+19519 events in 40 batches, 10.3s
+  applied   19500
+  restated  5   evt_005087 evt_009610 evt_009935 evt_014575 evt_014986
+  unchanged 14  evt_001846 evt_001862 ...
+  events    19500
+  jobs      312
+  customers 16
+  parts     25
+  machines  10
+```
+
+Verified after loading: the 5 restated events hold the second copy's quantity,
+and `rebuild_jobs()` replays the ledger to a projection identical to the one the
+incremental path built, so the repair path and the live path agree.
+
+One finding came out of the load. `job_0293` was recorded as the feed's double
+completion, two `job_completed` events for one order. Both lines carry the id
+`evt_001862`, so it was never a double completion, only the duplicate-id problem
+in different clothing. `dq_double_completions` now correctly returns nothing and
+stays as the guard for a job that really does complete twice under two ids.
+
 ## Next
 
-- A loader script that reads the JSONL and populates the database, feeding each
-  line through `process_event`
+- Pages, starting with the jobs list
 
 ## Deliverables
 
 | File | What it is |
 |---|---|
 | `scripts/schema.sql` | The schema, executable |
+| `scripts/load-events.mjs` | Loads the event feed into the database |
 | `designs/schema_proposal.html` | Schema writeup and decision log |
 | `designs/manufacturing_events_profile.html` | Every field, its distinct values and their frequencies |
 | `designs/job_histories.html` | Full event timeline for ten representative jobs |

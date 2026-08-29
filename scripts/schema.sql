@@ -39,10 +39,13 @@ CREATE TYPE machine_kind AS ENUM ('press', 'qc', 'tooling');
 -- field the feed actually sends, nothing derived, nothing duplicated:
 -- metadata stays whole rather than being copied out into columns.
 --
--- event_id is the primary key. 19 ids arrive twice in the sample; the
--- second copy is dropped at ingest (5 of those 19 differ in payload, so
--- the drop is a decision, not a technicality: see process_event, which
--- returns false so the loader can log what it discarded).
+-- event_id is the primary key. 19 ids arrive twice in the sample. A repeat
+-- carrying the same payload changes nothing; a repeat carrying a different
+-- payload is treated as a restatement and overwrites the stored row (5 of
+-- the 19 do, all differing only in quantity). So the table is append-only
+-- for distinct ids and last-writer-wins for a repeated one, and the
+-- projection is repaired by replay rather than by arithmetic: see
+-- process_event and rebuild_job.
 --
 -- No constraints beyond the key. This table has to accept whatever the
 -- shop reported, including the parts that are wrong; the projections
@@ -215,15 +218,24 @@ CREATE INDEX jobs_machine_idx      ON jobs (machine_id) WHERE machine_id IS NOT 
 
 -- ---------------------------------------------------------------------
 -- @ingest
--- Two functions, because the projection has to be reachable twice: once per
--- arriving event, and once per stored event when jobs is rebuilt.
+-- Three functions, because the projection has to be reachable twice (once
+-- per arriving event, once per stored event when jobs is rebuilt) and
+-- because a loader wants to spend one round trip on many events.
 --
---   apply_event   the projection, and the only thing that moves a counter
---   process_event registries, then the ledger insert, then apply_event
+--   apply_event    the projection, and the only thing that moves a counter
+--   process_event  registries, then the ledger write, then apply or repair
+--   process_events one round trip per batch, in order
 --
--- The ledger insert is the dedupe gate. A repeated event_id inserts nothing,
--- FOUND is false, apply_event is never called and the function returns false
--- so the loader can log the drop.
+-- The ledger write decides what a repeated event_id means, and reports it:
+--
+--   applied    a new id. Inserted, then applied to the projection.
+--   unchanged  the id and the whole payload were already stored. The
+--              upsert's WHERE finds nothing distinct, so no row is touched
+--              and no counter moves.
+--   restated   the id was stored with a different payload. The row is
+--              overwritten and the affected job's projection is rebuilt
+--              from the ledger, because the counters it already accumulated
+--              were computed from the payload that just got replaced.
 -- ---------------------------------------------------------------------
 CREATE FUNCTION apply_event(p events) RETURNS void
 LANGUAGE plpgsql AS $$
@@ -279,11 +291,14 @@ BEGIN
   WHERE j.job_id = p.job_id;
 END $$;
 
-CREATE FUNCTION process_event(p_raw jsonb) RETURNS boolean
+-- Returns 'applied', 'restated' or 'unchanged'. rebuild_job is defined in
+-- the replay section below; plpgsql resolves it at first call, not here.
+CREATE FUNCTION process_event(p_raw jsonb) RETURNS text
 LANGUAGE plpgsql AS $$
 DECLARE
   v_md    jsonb := COALESCE(p_raw -> 'metadata', '{}'::jsonb);
   v_event events;
+  v_new   boolean;
 BEGIN
   -- 1. reference rows, created the first time an event names them
   INSERT INTO customers  (customer_id) VALUES (p_raw ->> 'customer_id')  ON CONFLICT DO NOTHING;
@@ -297,23 +312,66 @@ BEGIN
     WHERE p_raw ->> 'machine_id' IS NOT NULL
     ON CONFLICT DO NOTHING;
 
-  -- 2. the ledger insert IS the dedupe gate
+  -- 2. the ledger write. The WHERE is what separates a restatement from a
+  --    repeat that says nothing new: if no column differs, no row is
+  --    touched, RETURNING yields nothing and FOUND is false.
   INSERT INTO events (event_id, occurred_at, event_type, job_id, part_id,
                       customer_id, material_id, machine_id, quantity, metadata)
   VALUES (p_raw ->> 'event_id', (p_raw ->> 'timestamp')::timestamptz, p_raw ->> 'event_type',
           p_raw ->> 'job_id', p_raw ->> 'part_id', p_raw ->> 'customer_id',
           p_raw ->> 'material', p_raw ->> 'machine_id',
           (p_raw ->> 'quantity')::int, v_md)
-  ON CONFLICT (event_id) DO NOTHING
-  RETURNING * INTO v_event;
+  ON CONFLICT (event_id) DO UPDATE SET
+    occurred_at = EXCLUDED.occurred_at,
+    event_type  = EXCLUDED.event_type,
+    job_id      = EXCLUDED.job_id,
+    part_id     = EXCLUDED.part_id,
+    customer_id = EXCLUDED.customer_id,
+    material_id = EXCLUDED.material_id,
+    machine_id  = EXCLUDED.machine_id,
+    quantity    = EXCLUDED.quantity,
+    metadata    = EXCLUDED.metadata
+  WHERE events.* IS DISTINCT FROM EXCLUDED.*
+  RETURNING (xmax = 0) INTO v_new;   -- xmax is 0 on an insert, set on an update
 
   IF NOT FOUND THEN
-    RETURN false;          -- duplicate id: dropped before any counter moves
+    RETURN 'unchanged';
   END IF;
 
+  SELECT * INTO v_event FROM events WHERE event_id = p_raw ->> 'event_id';
+
   -- 3. the projection
-  PERFORM apply_event(v_event);
-  RETURN true;
+  IF v_new THEN
+    PERFORM apply_event(v_event);
+    RETURN 'applied';
+  END IF;
+
+  -- A restatement replaced a payload the counters were already computed
+  -- from, so this job's totals are wrong by the difference. Replaying the
+  -- job costs one delete and its own events; teaching apply_event to
+  -- subtract would cost every event forever.
+  PERFORM rebuild_job(v_event.job_id);
+  RETURN 'restated';
+END $$;
+
+-- One round trip, many events, applied in array order. Only the events that
+-- were not plainly applied come back, so a full load returns a handful of
+-- rows rather than one per event.
+CREATE FUNCTION process_events(p_batch jsonb)
+RETURNS TABLE (event_id text, outcome text)
+LANGUAGE plpgsql AS $$
+DECLARE
+  e jsonb;
+  o text;
+BEGIN
+  FOR e IN SELECT value FROM jsonb_array_elements(p_batch) LOOP
+    o := process_event(e);
+    IF o <> 'applied' THEN
+      event_id := e ->> 'event_id';
+      outcome  := o;
+      RETURN NEXT;
+    END IF;
+  END LOOP;
 END $$;
 
 -- ---------------------------------------------------------------------
@@ -324,9 +382,25 @@ END $$;
 -- after changing anything in apply_event, or to prove the projection still
 -- agrees with the events.
 --
+-- Two scopes. rebuild_job repairs one job and is called by process_event
+-- whenever a restatement invalidates that job's totals; rebuild_jobs is the
+-- whole-table version, and the two must agree.
+--
 -- 19,519 events is a single-digit-second rebuild. Past a few million, replay
 -- per facility or per job range rather than whole-table.
 -- ---------------------------------------------------------------------
+CREATE FUNCTION rebuild_job(p_job_id text) RETURNS void
+LANGUAGE plpgsql AS $$
+DECLARE
+  r events;
+BEGIN
+  DELETE FROM jobs WHERE job_id = p_job_id;   -- nothing references jobs
+  FOR r IN SELECT * FROM events WHERE job_id = p_job_id
+           ORDER BY occurred_at, event_id LOOP
+    PERFORM apply_event(r);
+  END LOOP;
+END $$;
+
 CREATE FUNCTION rebuild_jobs() RETURNS bigint
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -345,7 +419,10 @@ END $$;
 -- @dq
 -- Every anomaly the profile found gets a standing query, not a cleanup.
 -- ---------------------------------------------------------------------
-CREATE VIEW dq_double_completions AS          -- job_0293 in the sample
+-- job_0293 looked like the sample's double completion; loading proved both
+-- lines carry event_id evt_001862, so the ledger holds one and this returns
+-- nothing. It stays as the guard for a job that completes twice under two ids.
+CREATE VIEW dq_double_completions AS
   SELECT e.job_id, count(*) AS completion_events,
          j.good_quantity, j.scrap_quantity, j.target_quantity
   FROM events e JOIN jobs j USING (job_id)

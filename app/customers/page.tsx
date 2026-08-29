@@ -2,6 +2,7 @@ import Header from "@/app/_components/header";
 import { chrome } from "@/lib/chrome";
 import { one, query } from "@/lib/db";
 import { customerLabel, money, num } from "@/lib/format";
+import ClickRow from "@/lib/row";
 import { orderBy, sortHref, Th, type Column, type SortSpec } from "@/lib/table";
 
 export const dynamic = "force-dynamic";
@@ -108,7 +109,7 @@ export default async function CustomersPage({
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.customer_id}>
+                <ClickRow key={r.customer_id} href={`/customers/${r.customer_id}`}>
                   <td><a href={`/customers/${r.customer_id}`}>{customerLabel(r.customer_id)}</a></td>
                   <td style={numeric}>{num(r.jobs)}</td>
                   <td style={numeric}>{num(r.open_jobs)}</td>
@@ -116,7 +117,7 @@ export default async function CustomersPage({
                   <td style={numeric}>{num(r.good)}</td>
                   <td style={numeric}>{onTimePct(r.on_time, r.done)}</td>
                   <td style={numeric}>{money(r.revenue)}</td>
-                </tr>
+                </ClickRow>
               ))}
             </tbody>
           </table>

@@ -2,6 +2,7 @@ import Header from "@/app/_components/header";
 import { chrome } from "@/lib/chrome";
 import { one, query } from "@/lib/db";
 import { customerLabel, num, PRIORITY } from "@/lib/format";
+import ClickRow from "@/lib/row";
 import { orderBy, sortHref, Th, type Column, type SortSpec } from "@/lib/table";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +21,7 @@ const TABS = {
   completed: {
     label: "Completed", statuses: ["completed"], dateDir: "desc",
     dateCol: "j.completed_at", dateHead: "Completed",
-    footnote: "Showing at most 25 rows. Sort a column to reach the rest.",
+    footnote: "Showing the 25 most recent completions.",
   },
 } as const;
 
@@ -62,10 +63,17 @@ export default async function JobsPage({
   const [top, totals, metrics, rows] = await Promise.all([
     chrome(),
 
-    one<{ matched: string; all_jobs: string }>(
+    one<{ matched: string; all_jobs: string } & Record<TabKey, string>>(
       `select count(*) filter (where ${filterOn(1)})::text as matched,
-              count(*)::text as all_jobs
-       from jobs j`, [like]),
+              count(*)::text as all_jobs,
+              count(*) filter (where ${filterOn(1)}
+                and j.status = any($2))::text as "in-progress",
+              count(*) filter (where ${filterOn(1)}
+                and j.status = any($3))::text as pending,
+              count(*) filter (where ${filterOn(1)}
+                and j.status = any($4))::text as completed
+       from jobs j`,
+      [like, TABS["in-progress"].statuses, TABS.pending.statuses, TABS.completed.statuses]),
 
     one<Record<string, string>>(
       `select count(*)::text as jobs,
@@ -141,7 +149,7 @@ export default async function JobsPage({
           <div className="seg" style={{ alignSelf: "flex-start" }}>
             {(Object.keys(TABS) as TabKey[]).map((key) => (
               <a key={key} className="seg-opt" href={tabHref(key)} aria-current={key === tab}>
-                {TABS[key].label}
+                {TABS[key].label} ({num(totals[key])})
               </a>
             ))}
           </div>
@@ -164,7 +172,7 @@ export default async function JobsPage({
                 {rows.map((r) => {
                   const p = PRIORITY[r.priority] ?? PRIORITY.normal;
                   return (
-                    <tr key={r.job_id}>
+                    <ClickRow key={r.job_id} href={`/jobs/${r.job_id}`}>
                       <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/jobs/${r.job_id}`}>{r.job_id}</a></td>
                       <td><a href={`/customers/${r.customer_id}`}>{customerLabel(r.customer_id)}</a></td>
                       <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/parts/${r.part_id}`}>{r.part_id}</a></td>
@@ -174,7 +182,7 @@ export default async function JobsPage({
                       <td style={numeric}>{num(r.pass_units)} / {num(r.fail_units)}</td>
                       <td style={{ ...numeric, color: r.late && r.status !== "completed" ? "var(--color-accent-800)" : "inherit" }}>{r.due ?? "—"}</td>
                       <td style={numeric}>{r.section_date ?? "—"}</td>
-                    </tr>
+                    </ClickRow>
                   );
                 })}
               </tbody>

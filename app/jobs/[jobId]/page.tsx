@@ -59,7 +59,7 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
      from jobs where job_id = $1`, [jobId]);
   if (!job) notFound();
 
-  const [top, facets, timeline, defects] = await Promise.all([
+  const [top, facets, timeline] = await Promise.all([
     chrome(),
 
     one<Facets>(
@@ -80,11 +80,6 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
       `select to_char(occurred_at, 'YYYY-MM-DD HH24:MI') as when_at,
               event_type, machine_id, quantity::text, metadata
        from events where job_id = $1 order by occurred_at, event_id`, [jobId]),
-
-    query<{ code: string; units: string }>(
-      `select metadata ->> 'defect_code' as code, sum(quantity)::text as units
-       from events where job_id = $1 and event_type = 'inspection_failed'
-       group by 1 order by sum(quantity) desc`, [jobId]),
   ]);
 
   const n = (k: keyof Job) => Number(job[k] ?? 0);
@@ -138,7 +133,6 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
     ["Inspectors", facets.inspectors ?? "none"],
   ];
 
-  const maxDefect = Math.max(...defects.map((d) => Number(d.units)), 1);
   const kicker = { fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase" as const, color: "color-mix(in srgb, var(--color-text) 50%, transparent)" };
   const muted = { fontSize: 12, color: "color-mix(in srgb, var(--color-text) 55%, transparent)" };
 
@@ -247,28 +241,6 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
                     ))}
                   </div>
                 </div>
-              )}
-            </section>
-
-            <section className="card" style={{ padding: "var(--space-6)", gap: "var(--space-4)" }}>
-              <h4 style={{ margin: 0 }}>Defects on this job</h4>
-              {defects.length === 0 ? (
-                <div style={muted}>No inspection failures recorded.</div>
-              ) : (
-                <>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-                    {defects.map((d) => (
-                      <div key={d.code} style={{ display: "grid", gridTemplateColumns: "130px 1fr 56px", alignItems: "center", gap: 12, fontSize: 13 }}>
-                        <span>{d.code}</span>
-                        <span style={{ height: 12, background: "var(--color-neutral-200)", display: "block" }}>
-                          <span style={{ display: "block", height: "100%", width: `${Math.round((Number(d.units) / maxDefect) * 100)}%`, background: "var(--color-accent)" }} />
-                        </span>
-                        <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{num(d.units)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={muted}>{num(job.inspection_fail_units)} units rejected across {defects.length} codes.</div>
-                </>
               )}
             </section>
 

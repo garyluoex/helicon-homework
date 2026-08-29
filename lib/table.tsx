@@ -20,14 +20,11 @@ export function orderBy(
 export type Column = { key: string; label: string; num?: boolean };
 
 /** Header cells as links carrying the next sort state. */
-export function Th({ col, active, dir, href }: { col: Column; active: boolean; dir: string; href: (key: string) => string }) {
+export function Th({ col, active, dir, href }: { col: Column; active: boolean; dir: string; href: (key: string, num?: boolean) => string }) {
   const next = active && dir === "asc" ? "↑" : active ? "↓" : "";
   return (
     <th style={{ textAlign: col.num ? "right" : "left" }}>
-      <a
-        href={href(col.key)}
-        style={{ color: active ? "var(--color-accent-700)" : "inherit", textDecoration: "none", whiteSpace: "nowrap" }}
-      >
+      <a href={href(col.key, col.num)} style={{ color: active ? "var(--color-accent-700)" : "inherit" }}>
         {col.label}
         {next && <span style={{ marginLeft: 4 }}>{next}</span>}
       </a>
@@ -35,13 +32,17 @@ export function Th({ col, active, dir, href }: { col: Column; active: boolean; d
   );
 }
 
-/** Builds the querystring for clicking a header: same column flips direction. */
+/**
+ * Builds the querystring for clicking a header. Clicking the column already
+ * sorted flips it; clicking a new one opens on the end that answers the
+ * question being asked, so a count or an amount starts at its largest.
+ */
 export function sortHref(base: Record<string, string | undefined>, activeKey: string, activeDir: string) {
-  return (key: string) => {
+  return (key: string, num?: boolean) => {
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(base)) if (v) params.set(k, v);
     params.set("sort", key);
-    params.set("dir", key === activeKey && activeDir === "asc" ? "desc" : "asc");
+    params.set("dir", key === activeKey ? (activeDir === "asc" ? "desc" : "asc") : num ? "desc" : "asc");
     return "?" + params.toString();
   };
 }

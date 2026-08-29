@@ -2,6 +2,7 @@ import Header from "@/app/_components/header";
 import { chrome } from "@/lib/chrome";
 import { one, query } from "@/lib/db";
 import { num } from "@/lib/format";
+import ClickRow from "@/lib/row";
 import { orderBy, sortHref, Th, type Column, type SortSpec } from "@/lib/table";
 
 export const dynamic = "force-dynamic";
@@ -73,7 +74,7 @@ export default async function PartsPage({
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.part_id}>
+                <ClickRow key={r.part_id} href={`/parts/${r.part_id}`}>
                   <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/parts/${r.part_id}`}>{r.part_id}</a></td>
                   <td>{r.material_id}</td>
                   <td style={numeric}>{num(r.jobs)}</td>
@@ -81,7 +82,7 @@ export default async function PartsPage({
                   <td style={numeric}>{num(r.ordered)}</td>
                   <td style={numeric}>{r.scrap_rate === null ? "—" : r.scrap_rate + "%"}</td>
                   <td style={numeric}>{r.median_gap_h === null ? "—" : r.median_gap_h + " h"}</td>
-                </tr>
+                </ClickRow>
               ))}
             </tbody>
           </table>

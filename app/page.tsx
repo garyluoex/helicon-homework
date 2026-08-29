@@ -1,6 +1,8 @@
 import Header from "@/app/_components/header";
 import { chrome } from "@/lib/chrome";
 import { one, query } from "@/lib/db";
+import ClickRow from "@/lib/row";
+import { orderBy, Th, type Column, type SortSpec } from "@/lib/table";
 
 export const dynamic = "force-dynamic";
 
@@ -18,15 +20,33 @@ type Kpis = {
   // counting what is rendered would understate the real backlog.
   open_blocks: string; glitch_events: string; glitch_machines: string;
 };
-type JobRow = { job_id: string; cause: string | null; where_at: string; when_at: string; silent: string };
-type EquipRow = { where_at: string; signals: string; alerts: string; when_at: string; silent: string };
+type JobRow = { job_id: string; cause: string | null; where_at: string; when_at: string; silent_days: string };
+type EquipRow = { where_at: string; signals: string; alerts: string; when_at: string; silent_days: string };
 
 const n = (v: string | number | null) =>
   v === null ? "—" : Number(v).toLocaleString("en-US");
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ range?: string }> }) {
-  const asked = Number((await searchParams).range);
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string; jsort?: string; jdir?: string; esort?: string; edir?: string }>;
+}) {
+  const sp = await searchParams;
+  const asked = Number(sp.range);
   const rangeDays = RANGES.some((r) => r.days === asked) ? asked : 42;
+
+  // Both attention tables sort independently, so each owns its own pair of
+  // params. Days since update is the default on both: the stalest first.
+  const jobSpec: SortSpec = {
+    job_id: "job_id", what: "cause", where: "where_at",
+    when: "last_event_at", silent: "silent_days",
+  };
+  const equipSpec: SortSpec = {
+    where: "where_at", signals: "signals", count: "alerts",
+    when: "last_at", silent: "silent_days",
+  };
+  const jobSort = orderBy(jobSpec, sp.jsort, sp.jdir, "silent", "desc");
+  const equipSort = orderBy(equipSpec, sp.esort, sp.edir, "silent", "desc");
   // The feed ends before today, so every window is measured back from the last
   // event rather than from now.
   const from = `(select max(occurred_at) from events) - make_interval(days => $1::int)`;
@@ -59,26 +79,31 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
                     count(*) filter (where event_type = 'job_blocked')   as blocks,
                     count(*) filter (where event_type = 'job_unblocked') as unblocks
              from events where event_type in ('job_blocked', 'job_unblocked') group by 1)
-       select b.job_id,
-              (select e.metadata ->> 'reason' from events e
-               where e.job_id = b.job_id and e.event_type = 'job_blocked'
-               order by e.occurred_at desc limit 1) as cause,
-              coalesce(j.machine_id, j.facility_id) as where_at,
-              to_char(j.last_event_at, 'YYYY-MM-DD') as when_at,
-              floor(extract(epoch from (feed.hi - j.last_event_at)) / 86400)::text as silent
-       from b join jobs j using (job_id), feed
-       where b.blocks > b.unblocks
-       order by j.last_event_at limit 8`),
+       select * from (
+         select b.job_id,
+                (select e.metadata ->> 'reason' from events e
+                 where e.job_id = b.job_id and e.event_type = 'job_blocked'
+                 order by e.occurred_at desc limit 1) as cause,
+                coalesce(j.machine_id, j.facility_id) as where_at,
+                to_char(j.last_event_at, 'YYYY-MM-DD') as when_at,
+                j.last_event_at,
+                floor(extract(epoch from (feed.hi - j.last_event_at)) / 86400) as silent_days
+         from b join jobs j using (job_id), feed
+         where b.blocks > b.unblocks) r
+       order by ${jobSort.sql} nulls last, job_id limit 8`),
 
     query<EquipRow>(
       `with feed as (select max(occurred_at) as hi from events)
-       select coalesce(e.machine_id, 'press unassigned') as where_at,
-              string_agg(distinct e.metadata ->> 'signal', ', ') as signals,
-              count(*)::text as alerts,
-              to_char(max(e.occurred_at), 'YYYY-MM-DD') as when_at,
-              floor(extract(epoch from (feed.hi - max(e.occurred_at))) / 86400)::text as silent
-       from events e, feed where e.event_type = 'sensor_glitch'
-       group by 1, feed.hi order by max(e.occurred_at) limit 8`),
+       select * from (
+         select coalesce(e.machine_id, 'press unassigned') as where_at,
+                string_agg(distinct e.metadata ->> 'signal', ', ') as signals,
+                count(*) as alerts,
+                to_char(max(e.occurred_at), 'YYYY-MM-DD') as when_at,
+                max(e.occurred_at) as last_at,
+                floor(extract(epoch from (feed.hi - max(e.occurred_at))) / 86400) as silent_days
+         from events e, feed where e.event_type = 'sensor_glitch'
+         group by 1, feed.hi) r
+       order by ${equipSort.sql} nulls last, where_at limit 8`),
 
     chrome(),
   ]);
@@ -90,6 +115,48 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
     { label: "Units pressed", value: n(k.pressed), note: "cycle throughput, not order progress" },
     { label: "Units inspected", value: n(inspected), note: `${n(k.pass_units)} passed, ${n(k.fail_units)} failed` },
   ];
+
+  const jobCols: Column[] = [
+    { key: "job_id", label: "Job" }, { key: "what", label: "Cause" }, { key: "where", label: "Where" },
+    { key: "when", label: "Last event", num: true }, { key: "silent", label: "Days since update", num: true },
+  ];
+  const equipCols: Column[] = [
+    { key: "where", label: "Equipment" }, { key: "signals", label: "Problem" },
+    { key: "count", label: "Unresolved alerts", num: true },
+    { key: "when", label: "Last event", num: true }, { key: "silent", label: "Days since update", num: true },
+  ];
+
+  // Every control on the page writes its own params and carries the others
+  // through, so the range, the jobs sort and the equipment sort are independent.
+  const carry = (drop: string[]) => {
+    const p = new URLSearchParams();
+    const all: Record<string, string | undefined> = {
+      range: rangeDays === 42 ? undefined : String(rangeDays),
+      jsort: sp.jsort, jdir: sp.jdir, esort: sp.esort, edir: sp.edir,
+    };
+    for (const [key, value] of Object.entries(all)) if (value && !drop.includes(key)) p.set(key, value);
+    return p;
+  };
+  const nextDir = (same: boolean, dir: string, num?: boolean) =>
+    same ? (dir === "asc" ? "desc" : "asc") : num ? "desc" : "asc";
+  const rangeHref = (days: number) => {
+    const p = carry(["range"]);
+    if (days !== 42) p.set("range", String(days));
+    const qs = p.toString();
+    return qs ? `/?${qs}` : "/";
+  };
+  const jobHref = (key: string, num?: boolean) => {
+    const p = carry(["jsort", "jdir"]);
+    p.set("jsort", key);
+    p.set("jdir", nextDir(key === jobSort.key, jobSort.dir, num));
+    return "?" + p.toString();
+  };
+  const equipHref = (key: string, num?: boolean) => {
+    const p = carry(["esort", "edir"]);
+    p.set("esort", key);
+    p.set("edir", nextDir(key === equipSort.key, equipSort.dir, num));
+    return "?" + p.toString();
+  };
 
   const muted = { fontSize: 12, color: "color-mix(in srgb, var(--color-text) 55%, transparent)" };
   const numeric = { textAlign: "right" as const, fontVariantNumeric: "tabular-nums" };
@@ -105,7 +172,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
           </span>
           <div className="seg" style={{ marginLeft: "auto" }}>
             {RANGES.map((r) => (
-              <a key={r.days} className="seg-opt" href={r.days === 42 ? "/" : `/?range=${r.days}`}
+              <a key={r.days} className="seg-opt" href={rangeHref(r.days)}
                  aria-current={r.days === rangeDays}>
                 {r.label}
               </a>
@@ -138,20 +205,17 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
             </div>
             <table className="table">
               <thead>
-                <tr>
-                  <th>Job</th><th>Cause</th><th>Where</th>
-                  <th style={numeric}>Last event</th><th style={numeric}>Days since update</th>
-                </tr>
+                <tr>{jobCols.map((c) => <Th key={c.key} col={c} active={c.key === jobSort.key} dir={jobSort.dir} href={jobHref} />)}</tr>
               </thead>
               <tbody>
                 {jobRows.map((r) => (
-                  <tr key={r.job_id}>
-                    <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.job_id}</td>
+                  <ClickRow key={r.job_id} href={`/jobs/${r.job_id}`}>
+                    <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/jobs/${r.job_id}`}>{r.job_id}</a></td>
                     <td>{r.cause ?? "unstated cause"}</td>
                     <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.where_at}</td>
                     <td style={numeric}>{r.when_at}</td>
-                    <td style={numeric}>{r.silent}</td>
-                  </tr>
+                    <td style={numeric}>{r.silent_days}</td>
+                  </ClickRow>
                 ))}
               </tbody>
             </table>
@@ -166,10 +230,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
             </div>
             <table className="table">
               <thead>
-                <tr>
-                  <th>Equipment</th><th>Problem</th><th style={numeric}>Unresolved alerts</th>
-                  <th style={numeric}>Last event</th><th style={numeric}>Days since update</th>
-                </tr>
+                <tr>{equipCols.map((c) => <Th key={c.key} col={c} active={c.key === equipSort.key} dir={equipSort.dir} href={equipHref} />)}</tr>
               </thead>
               <tbody>
                 {equipRows.map((r) => (
@@ -178,7 +239,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
                     <td>{r.signals}</td>
                     <td style={numeric}>{r.alerts}</td>
                     <td style={numeric}>{r.when_at}</td>
-                    <td style={numeric}>{r.silent}</td>
+                    <td style={numeric}>{r.silent_days}</td>
                   </tr>
                 ))}
               </tbody>

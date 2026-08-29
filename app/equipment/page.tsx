@@ -9,15 +9,15 @@ export const dynamic = "force-dynamic";
 // Each group's fourth column asks a different question of the same ledger.
 const GROUPS = {
   presses: {
-    kind: "press", label: "Presses", title: "Presses", metricHead: "Jobs run",
+    kind: "press", kicker: "Press", label: "Presses", title: "Presses", metricHead: "Jobs run",
     metric: "count(distinct e.job_id) filter (where e.event_type = 'job_started')",
   },
   qc: {
-    kind: "qc", label: "Inspection stations", title: "Inspection stations", metricHead: "Units judged",
+    kind: "qc", kicker: "QC", label: "Inspection stations", title: "Inspection stations", metricHead: "Units judged",
     metric: "coalesce(sum(e.quantity) filter (where e.event_type in ('inspection_passed','inspection_failed')), 0)",
   },
   tooling: {
-    kind: "tooling", label: "Tooling cells", title: "Tooling cells", metricHead: "Tools prepared",
+    kind: "tooling", kicker: "Tooling", label: "Tooling cells", title: "Tooling cells", metricHead: "Tools prepared",
     metric: "count(*) filter (where e.event_type = 'tool_ready')",
   },
 } as const;
@@ -42,13 +42,10 @@ export default async function EquipmentPage({
 
   const [top, k, rows] = await Promise.all([
     chrome(),
-    one<{ machines: string; both_sites: string; glitches: string; unattributed: string }>(
+    one<{ machines: string; both_sites: string }>(
       `select (select count(*) from machines)::text as machines,
               (select count(*) from (select machine_id from events where machine_id is not null
-                 group by 1 having count(distinct metadata ->> 'facility') = 2) x)::text as both_sites,
-              (select count(*) from events where event_type = 'sensor_glitch')::text as glitches,
-              (select count(*) from events
-               where event_type = 'sensor_glitch' and machine_id is null)::text as unattributed`),
+                 group by 1 having count(distinct metadata ->> 'facility') = 2) x)::text as both_sites`),
     query<Row>(
       `select m.machine_id,
               count(e.event_id)::text as events,
@@ -68,7 +65,6 @@ export default async function EquipmentPage({
   const href = sortHref({ tab }, sort.key, sort.dir);
   const tabHref = (key: string) => `?tab=${key}`;
   const numeric = { textAlign: "right" as const, fontVariantNumeric: "tabular-nums" };
-  const muted = { fontSize: 12, color: "color-mix(in srgb, var(--color-text) 55%, transparent)" };
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
@@ -91,7 +87,7 @@ export default async function EquipmentPage({
           </div>
 
           <section className="card" style={{ padding: "var(--space-6)", gap: "var(--space-4)" }}>
-            <div className="card-kicker">{g.kind}</div>
+            <div className="card-kicker">{g.kicker}</div>
             <h4 style={{ margin: 0 }}>{g.title}</h4>
             <table className="table">
               <thead>
@@ -119,11 +115,6 @@ export default async function EquipmentPage({
                 })}
               </tbody>
             </table>
-            <div style={muted}>
-              Health flags a machine reporting more than one sensor glitch. {num(k.unattributed)} of the{" "}
-              {num(k.glitches)} glitches in the feed carry no machine_id, so they appear on Home under
-              &ldquo;press unassigned&rdquo; and against no machine here.
-            </div>
           </section>
         </div>
       </main>

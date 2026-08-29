@@ -3,7 +3,8 @@ import Header from "@/app/_components/header";
 import { chrome } from "@/lib/chrome";
 import { one, query } from "@/lib/db";
 import { customerLabel, money, num, STATUS } from "@/lib/format";
-import { orderBy, sortHref, Th, type Column, type SortSpec } from "@/lib/table";
+import ClickRow from "@/lib/row";
+import { orderBy, Th, type Column, type SortSpec } from "@/lib/table";
 
 export const dynamic = "force-dynamic";
 
@@ -42,8 +43,9 @@ export default async function CustomerPage({
               coalesce(sum(good_quantity), 0)::text                       as good,
               count(*) filter (where completed_at is not null)::text      as done,
               count(*) filter (where completed_at <= target_due_at)::text as on_time,
-              count(*) filter (where unit_price_estimate is not null)::text as priced,
-              round(${REVENUE})::text                                     as revenue
+              round(${REVENUE})::text                                     as revenue,
+              (select round(100.0 * count(*) filter (where unit_price_estimate is not null)
+                            / nullif(count(*), 0)) from jobs)::text       as priced_pct
        from jobs where customer_id = $1`, [customerId]),
     query<PartRow>(
       `select j.part_id, max(p.material_id) as material_id,
@@ -66,7 +68,7 @@ export default async function CustomerPage({
     { label: "Units ordered", value: num(stats.ordered), note: `across ${num(stats.parts)} parts` },
     { label: "Good delivered", value: num(stats.good), note: `${num(stats.done)} completed jobs` },
     { label: "On time", value: Number(stats.done) ? Math.round((Number(stats.on_time) / Number(stats.done)) * 100) + "%" : "—", note: "against target date" },
-    { label: "Est. revenue", value: money(stats.revenue), note: `price on ${num(stats.priced)} of ${num(stats.jobs)} jobs` },
+    { label: "Est. revenue", value: money(stats.revenue), note: `price on ${stats.priced_pct}% of jobs` },
   ];
 
   const partCols: Column[] = [
@@ -79,20 +81,24 @@ export default async function CustomerPage({
     { key: "due", label: "Due", num: true },
   ];
   const base = { psort: sp.psort, pdir: sp.pdir, jsort: sp.jsort, jdir: sp.jdir };
-  const partHref = (key: string) => {
+  // Two tables on one page, so each carries its own pair of params and leaves
+  // the other's alone. Direction follows the same rule as sortHref.
+  const nextDir = (same: boolean, dir: string, num?: boolean) =>
+    same ? (dir === "asc" ? "desc" : "asc") : num ? "desc" : "asc";
+  const partHref = (key: string, num?: boolean) => {
     const p = new URLSearchParams();
     if (base.jsort) p.set("jsort", base.jsort);
     if (base.jdir) p.set("jdir", base.jdir);
     p.set("psort", key);
-    p.set("pdir", key === partSort.key && partSort.dir === "asc" ? "desc" : "asc");
+    p.set("pdir", nextDir(key === partSort.key, partSort.dir, num));
     return "?" + p.toString();
   };
-  const jobHref = (key: string) => {
+  const jobHref = (key: string, num?: boolean) => {
     const p = new URLSearchParams();
     if (base.psort) p.set("psort", base.psort);
     if (base.pdir) p.set("pdir", base.pdir);
     p.set("jsort", key);
-    p.set("jdir", key === jobSort.key && jobSort.dir === "asc" ? "desc" : "asc");
+    p.set("jdir", nextDir(key === jobSort.key, jobSort.dir, num));
     return "?" + p.toString();
   };
   const numeric = { textAlign: "right" as const, fontVariantNumeric: "tabular-nums" };
@@ -124,12 +130,12 @@ export default async function CustomerPage({
               </thead>
               <tbody>
                 {parts.map((p) => (
-                  <tr key={p.part_id}>
+                  <ClickRow key={p.part_id} href={`/parts/${p.part_id}`}>
                     <td><a href={`/parts/${p.part_id}`}>{p.part_id}</a></td>
                     <td style={{ fontSize: 12 }}>{p.material_id}</td>
                     <td style={numeric}>{num(p.jobs)}</td>
                     <td style={numeric}>{num(p.units)}</td>
-                  </tr>
+                  </ClickRow>
                 ))}
               </tbody>
             </table>
@@ -145,14 +151,14 @@ export default async function CustomerPage({
                 {jobs.map((j) => {
                   const s = STATUS[j.status] ?? STATUS.created;
                   return (
-                    <tr key={j.job_id}>
+                    <ClickRow key={j.job_id} href={`/jobs/${j.job_id}`}>
                       <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/jobs/${j.job_id}`}>{j.job_id}</a></td>
                       <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/parts/${j.part_id}`}>{j.part_id}</a></td>
                       <td><span className="tag" style={{ background: s.bg, color: s.ink }}>{s.label}</span></td>
                       <td style={numeric}>{num(j.target_quantity)}</td>
                       <td style={numeric}>{num(j.good_quantity)}</td>
                       <td style={{ ...numeric, color: j.late && j.status !== "completed" ? "var(--color-accent-800)" : "inherit" }}>{j.due ?? "—"}</td>
-                    </tr>
+                    </ClickRow>
                   );
                 })}
               </tbody>

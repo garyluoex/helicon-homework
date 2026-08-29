@@ -10,3 +10,8 @@ next-env.d.ts
 .claude/skills/neon
 .claude/skills/neon-postgres
 skills-lock.json
+
+# Written by `next dev`, not part of the project
+AGENTS.md
+CLAUDE.md
+tsconfig.tsbuildinfo

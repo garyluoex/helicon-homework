@@ -3,6 +3,7 @@ import Header from "@/app/_components/header";
 import { chrome } from "@/lib/chrome";
 import { one, query } from "@/lib/db";
 import { customerLabel, num, STATUS } from "@/lib/format";
+import ClickRow from "@/lib/row";
 import { orderBy, sortHref, Th, type Column, type SortSpec } from "@/lib/table";
 
 export const dynamic = "force-dynamic";
@@ -142,7 +143,7 @@ export default async function PartPage({
               {jobs.map((j) => {
                 const s = STATUS[j.status] ?? STATUS.created;
                 return (
-                  <tr key={j.job_id}>
+                  <ClickRow key={j.job_id} href={`/jobs/${j.job_id}`}>
                     <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/jobs/${j.job_id}`}>{j.job_id}</a></td>
                     <td><a href={`/customers/${j.customer_id}`}>{customerLabel(j.customer_id)}</a></td>
                     <td><span className="tag" style={{ background: s.bg, color: s.ink }}>{s.label}</span></td>
@@ -151,7 +152,7 @@ export default async function PartPage({
                     <td style={numeric}>{num(j.cycle_units)}</td>
                     <td style={numeric}>{num(j.pass_units)} / {num(j.fail_units)}</td>
                     <td style={{ ...numeric, color: j.late && j.status !== "completed" ? "var(--color-accent-800)" : "inherit" }}>{j.due ?? "—"}</td>
-                  </tr>
+                  </ClickRow>
                 );
               })}
             </tbody>

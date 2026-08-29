@@ -5,7 +5,7 @@ built on top of it.
 
 ## Stack
 
-- Vercel deployment
+- Vercel deployment, https://helicon-homework.vercel.app, auto-deployed from `main`
 - TypeScript Next.js app
 - Tailwind UI
 - Neon (Postgres)

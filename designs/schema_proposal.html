@@ -507,7 +507,7 @@ document.getElementById('tablecount').textContent =
   `${DATA.tables.length} tables, ${DATA.column_count} columns, ${DATA.enum_count} enum type` +
   `${DATA.enum_count === 1 ? '' : 's'}, ${DATA.view_count} views.`;
 document.getElementById('tablesIntro').innerHTML =
-  `<p>Each card carries the DDL as it appears in <span class="mono">designs/schema.sql</span>, the file this page is
+  `<p>Each card carries the DDL as it appears in <span class="mono">scripts/schema.sql</span>, the file this page is
    generated from, so the two cannot drift. The chips under each name are the event types that write the table.</p>`;
 
 document.getElementById('tableCards').innerHTML = DATA.tables.map(t => `
@@ -598,5 +598,5 @@ document.getElementById('foot').innerHTML =
   `Schema derived from ${fmt(DATA.total_events)} events in <span class="mono">${esc(DATA.source)}</span>, ` +
   `covering ${DATA.jobs} jobs, ${DATA.customers} customers, ${DATA.parts} parts, ${DATA.materials} materials, ` +
   `${DATA.machines} machine codes, ${DATA.tools} tool codes and ${DATA.technicians} technician badges across ` +
-  `${DATA.facilities} facilities. The executable DDL is <span class="mono">designs/schema.sql</span>; this page is generated from it.`;
+  `${DATA.facilities} facilities. The executable DDL is <span class="mono">scripts/schema.sql</span>; this page is generated from it.`;
 </script>

@@ -8,8 +8,50 @@ built on top of it.
 - Vercel deployment, https://helicon-homework.vercel.app, auto-deployed from `main`
 - TypeScript Next.js app
 - Tailwind UI
-- Neon (Postgres), schema applied from `designs/schema.sql` via `npm run db:schema`
+- Neon (Postgres), free plan, provisioned through the Vercel marketplace
 - Zod model validation
+
+## Setup
+
+Requires Node 20.6+ (for `node --env-file`), and the [Vercel CLI](https://vercel.com/docs/cli) logged in
+(`vercel login`) for anything touching the deployment or the database.
+
+```bash
+npm install
+npm run dev          # http://localhost:3000
+```
+
+### Deployment
+
+The Vercel project `helicon-homework` is connected to this GitHub repo, so a push
+to `main` deploys to production and any other branch gets a preview URL. To
+reproduce the wiring from scratch:
+
+```bash
+vercel link --yes                # create and link the project
+vercel git connect               # deploy on push (needs the Vercel GitHub app
+                                 # authorised on the repo, which for a private
+                                 # repo means approving it in the browser)
+vercel deploy --prod             # manual deploy, no git needed
+```
+
+### Database
+
+Neon is provisioned as a Vercel marketplace resource, so the connection strings
+arrive as project environment variables rather than being managed by hand:
+
+```bash
+vercel integration add neon --name helicon-db   # accept the marketplace terms in
+                                                # a real terminal first, once:
+                                                # vercel integration accept-terms neon
+vercel env pull                                 # writes .env.local, gitignored
+npm run db:schema                               # runs scripts/schema.sql, prints the tables
+```
+
+`db:schema` connects on `DATABASE_URL_UNPOOLED`, the direct connection rather than
+the pooler, because it is DDL. It expects an empty database: the file is plain
+`CREATE`, not `CREATE IF NOT EXISTS`, so a second run fails on the first object
+that already exists. To start over, drop and recreate the public schema.
 
 ## Data
 
@@ -95,8 +137,9 @@ rule also governs the next conflict, which may not be this harmless:
 
 ## Database design
 
-`designs/schema.sql` is the executable DDL. `designs/schema_proposal.html` is the
-writeup, including a decision log of every fork and what was chosen.
+`scripts/schema.sql` is the executable DDL, applied to Neon with
+`npm run db:schema`. `designs/schema_proposal.html` is the writeup, including a
+decision log of every fork and what was chosen.
 
 Six tables, 48 columns. `events` is an append-only ledger with `event_id` as its
 primary key and no other constraint, so it accepts whatever the shop reported.
@@ -157,7 +200,7 @@ Rules that flag a job at risk of delay, delivery failure or bad data:
 
 | File | What it is |
 |---|---|
-| `designs/schema.sql` | The proposed schema, executable |
+| `scripts/schema.sql` | The schema, executable |
 | `designs/schema_proposal.html` | Schema writeup and decision log |
 | `designs/manufacturing_events_profile.html` | Every field, its distinct values and their frequencies |
 | `designs/job_histories.html` | Full event timeline for ten representative jobs |

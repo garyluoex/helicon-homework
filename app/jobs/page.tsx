@@ -1,7 +1,6 @@
-import { cookies } from "next/headers";
 import Header from "@/app/_components/header";
+import { chrome } from "@/lib/chrome";
 import { one, query } from "@/lib/db";
-import { COOKIE_NAME, verify } from "@/lib/session";
 import { customerLabel, num, PRIORITY } from "@/lib/format";
 import { orderBy, sortHref, Th, type Column, type SortSpec } from "@/lib/table";
 
@@ -9,17 +8,17 @@ export const dynamic = "force-dynamic";
 
 const TABS = {
   "in-progress": {
-    label: "In progress", statuses: ["in_progress", "blocked", "on_hold"],
+    label: "In progress", statuses: ["in_progress", "blocked", "on_hold"], dateDir: "asc",
     dateCol: "j.last_event_at", dateHead: "Last event",
     footnote: "A blocked job can keep cycling: status alone does not find them, blocks against unblocks does.",
   },
   pending: {
-    label: "Pending", statuses: ["created", "tooling_ready"],
+    label: "Pending", statuses: ["created", "tooling_ready"], dateDir: "asc",
     dateCol: "j.created_event_at", dateHead: "Created",
     footnote: "Booked and not yet on a press.",
   },
   completed: {
-    label: "Completed", statuses: ["completed"],
+    label: "Completed", statuses: ["completed"], dateDir: "desc",
     dateCol: "j.completed_at", dateHead: "Completed",
     footnote: "Showing at most 25 rows. Sort a column to reach the rest.",
   },
@@ -58,14 +57,10 @@ export default async function JobsPage({
     target: "j.target_quantity", pass: "j.inspection_pass_units",
     due: "j.target_due_at", date: t.dateCol,
   };
-  const sort = orderBy(spec, sp.sort, sp.dir, "date");
+  const sort = orderBy(spec, sp.sort, sp.dir, "date", t.dateDir);
 
-  const [userRow, feed, totals, metrics, rows] = await Promise.all([
-    one<{ display_name: string | null; email: string }>(
-      "select display_name, email from users where user_id = $1",
-      [await verify((await cookies()).get(COOKIE_NAME)?.value)]),
-
-    one<{ feed_end: string }>("select to_char(max(occurred_at), 'YYYY-MM-DD') as feed_end from events"),
+  const [top, totals, metrics, rows] = await Promise.all([
+    chrome(),
 
     one<{ matched: string; all_jobs: string }>(
       `select count(*) filter (where ${filterOn(1)})::text as matched,
@@ -127,7 +122,7 @@ export default async function JobsPage({
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      <Header current="jobs" feedEnd={feed.feed_end} userName={userRow?.display_name ?? userRow?.email ?? "Signed in"} />
+      <Header current="jobs" feedEnd={top.feed_end} userName={top.user_name} />
       <main style={{ flex: 1, padding: "32px 28px 72px", maxWidth: 1560, width: "100%", margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 16, marginBottom: 20 }}>
           <h2 style={{ margin: 0 }}>Jobs</h2>
@@ -171,8 +166,8 @@ export default async function JobsPage({
                   return (
                     <tr key={r.job_id}>
                       <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/jobs/${r.job_id}`}>{r.job_id}</a></td>
-                      <td>{customerLabel(r.customer_id)}</td>
-                      <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.part_id}</td>
+                      <td><a href={`/customers/${r.customer_id}`}>{customerLabel(r.customer_id)}</a></td>
+                      <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/parts/${r.part_id}`}>{r.part_id}</a></td>
                       <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.facility_id}</td>
                       <td><span className="tag" style={{ background: p.bg, color: p.ink }}>{p.label}</span></td>
                       <td style={numeric}>{num(r.target_quantity)}</td>

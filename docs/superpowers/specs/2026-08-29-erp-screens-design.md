@@ -115,3 +115,44 @@ the arrow follows; the filter narrows and the "N of 312" label tracks it; a
 completed job, a blocked job and a created-only job all render with no `NaN` or
 `undefined`; the timeline row count equals that job's `event_count`; an unknown
 job id 404s.
+
+## Stage 2
+
+Four screens on stage 1's machinery, no new dependencies:
+`app/customers/page.tsx`, `app/customers/[customerId]/page.tsx`,
+`app/parts/page.tsx`, `app/parts/[partId]/page.tsx`.
+
+### Default sort direction is part of a table's design
+
+`orderBy` takes a fallback direction alongside the fallback column, and honours
+an explicit `dir` only when it arrives with a valid column. Landing on a page
+with no parameters therefore gives each table the order it is meant to have:
+
+| Table | Default |
+|---|---|
+| Jobs, In progress and Pending | date ascending, so the stalest work surfaces first |
+| Jobs, Completed | completion descending, newest first |
+| Customers | estimated revenue descending |
+| A customer's parts | units descending; their jobs, created descending |
+| Parts | units ordered descending |
+| A part's jobs | created descending |
+
+### Reachability
+
+The design's nav is Home, Jobs, Equipment, Customers, so Parts has no entry
+point: a part is only reachable from a customer, and the Parts list only from a
+part's back link. Rather than add a nav item the design does not have, part and
+customer ids became links wherever they already appeared as text, on the Jobs
+table and in the Job details facts.
+
+### Figures the design hardcodes, confirmed against the ledger
+
+"16 accounts, 15 of them placing work at both sites" and "25 parts across 8
+materials" are both exactly right. The Customers KPIs come out 312 jobs booked
+with 31 open, 97,588 ordered, 78,555 good across 281 completions, 73% on time,
+and $9,725,133 estimated revenue from the 150 priced jobs.
+
+Median cycle gap is per job `(last_cycle_at - first_cycle_at) / cycle_count`,
+then the median across a part's jobs, rendered in hours. The Part page's defect
+breakdown groups that part's real `inspection_failed` events by `defect_code`
+rather than the design's random split.

@@ -3,9 +3,17 @@
 
 export type SortSpec = Record<string, string>;
 
-export function orderBy(spec: SortSpec, sort: string | undefined, dir: string | undefined, fallback: string) {
+export function orderBy(
+  spec: SortSpec,
+  sort: string | undefined,
+  dir: string | undefined,
+  fallback: string,
+  fallbackDir: "asc" | "desc" = "asc"
+) {
   const key = sort && sort in spec ? sort : fallback;
-  const descending = dir === "desc";
+  // A direction is only honoured alongside a valid column, so landing on the
+  // page with no params gives the table the order its own design intends.
+  const descending = sort && sort in spec ? dir === "desc" : fallbackDir === "desc";
   return { key, dir: descending ? "desc" : "asc", sql: `${spec[key]} ${descending ? "desc" : "asc"}` };
 }
 

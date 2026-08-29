@@ -1,8 +1,7 @@
-import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import Header from "@/app/_components/header";
+import { chrome } from "@/lib/chrome";
 import { one, query } from "@/lib/db";
-import { COOKIE_NAME, verify } from "@/lib/session";
 import { customerLabel, dur, hoursBetween, money, num, PRIORITY, STATUS } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -60,10 +59,8 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
      from jobs where job_id = $1`, [jobId]);
   if (!job) notFound();
 
-  const [userRow, facets, timeline, defects] = await Promise.all([
-    one<{ display_name: string | null; email: string }>(
-      "select display_name, email from users where user_id = $1",
-      [await verify((await cookies()).get(COOKIE_NAME)?.value)]),
+  const [top, facets, timeline, defects] = await Promise.all([
+    chrome(),
 
     one<Facets>(
       `select (select machine_id from events
@@ -128,8 +125,10 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
   const pct = (v: number) => ((v / scale) * 100).toFixed(2);
   const extra = Math.max(0, n("cycle_units") - target);
 
-  const facts: [string, string][] = [
-    ["Customer", job.customer_id], ["Part", job.part_id], ["Material", job.material_id],
+  const facts: [string, React.ReactNode][] = [
+    ["Customer", <a href={`/customers/${job.customer_id}`}>{job.customer_id}</a>],
+    ["Part", <a href={`/parts/${job.part_id}`}>{job.part_id}</a>],
+    ["Material", job.material_id],
     ["Tool", job.tool_id ?? "not assigned"], ["Operator", job.operator_id ?? "not assigned"],
     ["Unit price estimate", job.unit_price_estimate ? "$" + Number(job.unit_price_estimate).toFixed(2) : "not supplied"],
     ["Estimated value", job.unit_price_estimate ? money(Number(job.unit_price_estimate) * target) : "—"],
@@ -152,7 +151,7 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      <Header current="jobs" feedEnd={facets.feed_end} userName={userRow?.display_name ?? userRow?.email ?? "Signed in"} />
+      <Header current="jobs" feedEnd={top.feed_end} userName={top.user_name} />
       <main style={{ flex: 1, padding: "32px 28px 72px", maxWidth: 1560, width: "100%", margin: "0 auto" }}>
         <a href="/jobs" style={{ fontSize: 12, letterSpacing: ".1em", textTransform: "uppercase" }}>&larr; Jobs</a>
 

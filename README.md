@@ -199,16 +199,20 @@ per anomaly found in the data.
 
 ### Pages
 
-- **Login** - built
-- **Home** - built. Four KPIs over a selectable window, plus "Needs attention":
-  jobs with more blocks than unblocks, and sensor glitches grouped by machine
-- **Jobs** - list sectioned by created, in progress and completed, each line a job with key metadata, plus per-section metrics
-- **Job** - key metadata and metrics for one job
-- **Customers** - customers with their parts and revenue
-- **Customer** - one customer's metadata, metrics and parts
-- **Parts** - key metadata and metrics
-- **Part** - one part's metadata and metrics
-- **Equipment** - machines by facility and kind (press, tooling, QC), showing glitches and sensors
+All built. Every screen reads the live database; tab, sort and filter state
+lives in the URL, so any view is shareable.
+
+| Page | Route | What it shows |
+|---|---|---|
+| Login | `/login` | one shared credential, gated by middleware |
+| Home | `/` | four KPIs over a selectable window, plus jobs with open blocks and sensor glitches by machine |
+| Jobs | `/jobs` | three tabs, nine sortable columns, filter by job, customer or part |
+| Job | `/jobs/[id]` | six KPIs, lifecycle strip, unit and phase bars, defects, and the job's full event timeline |
+| Customers | `/customers` | six KPIs and a sortable book of accounts |
+| Customer | `/customers/[id]` | one account's stats, its parts and its jobs |
+| Parts | `/parts` | 25 parts with scrap rate and median cycle gap |
+| Part | `/parts/[id]` | one part's stats, real defect codes, and its jobs |
+| Equipment | `/equipment` | presses, inspection stations and tooling cells, with health from glitch counts |
 
 ### Job alerts
 
@@ -258,7 +262,7 @@ stays as the guard for a job that really does complete twice under two ids.
 
 ## Next
 
-- The Jobs tab. Its nav item renders already, greyed out and inert
+- Per-user authentication. The empty `neon_auth` schema is provisioned for it
 
 ## Deliverables
 

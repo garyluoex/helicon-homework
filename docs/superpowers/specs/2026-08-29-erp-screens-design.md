@@ -156,3 +156,29 @@ Median cycle gap is per job `(last_cycle_at - first_cycle_at) / cycle_count`,
 then the median across a part's jobs, rendered in hours. The Part page's defect
 breakdown groups that part's real `inspection_failed` events by `defect_code`
 rather than the design's random split.
+
+## Stage 3
+
+One route, `app/equipment/page.tsx`, and the last inert nav item goes live.
+Three tabs on `?tab=presses|qc|tooling` covering the 6 presses, 2 inspection
+stations and 2 tooling cells, five sortable columns defaulting to machine id
+ascending, and a metric column whose heading changes per group: Jobs run, Units
+judged, Tools prepared. Health follows the design: more than one sensor glitch
+reads Unhealthy, which marks press_05 and qc_01.
+
+All four numeric columns come from the ledger, replacing the design's RNG. The
+visible consequence is that tooling cells look nothing like the mockup, 156 and
+144 events against a design range of 400 to 2,700, because a tooling cell only
+ever emits `tool_ready`. That is the truth about this shop.
+
+8 of the 16 sensor glitches carry no `machine_id`. Home shows them under "press
+unassigned"; here they belong to no machine, so a footnote says so rather than
+leaving the two screens looking as though they disagree.
+
+With every tab built, the header's inert branch and its comment were removed.
+
+## Status
+
+All three stages are built and deployed. Routes: `/`, `/login`, `/jobs`,
+`/jobs/[jobId]`, `/customers`, `/customers/[customerId]`, `/parts`,
+`/parts/[partId]`, `/equipment`.

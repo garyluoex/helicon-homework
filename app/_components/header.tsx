@@ -1,13 +1,12 @@
+import { signOut } from "@/app/actions";
+
 const NAV = [
   { id: "home", label: "Home", href: "/" },
   { id: "jobs", label: "Jobs", href: "/jobs" },
-  { id: "equipment", label: "Equipment" },
+  { id: "equipment", label: "Equipment", href: "/equipment" },
   { id: "customers", label: "Customers", href: "/customers" },
 ];
 
-import { signOut } from "@/app/actions";
-
-// Only Home is built, so the other three render in place but do not navigate.
 export default function Header({ current, feedEnd, userName }: { current: string; feedEnd: string; userName: string }) {
   return (
     <header
@@ -20,24 +19,22 @@ export default function Header({ current, feedEnd, userName }: { current: string
       <nav style={{ display: "flex", gap: 22, marginRight: "auto" }}>
         {NAV.map((item) => {
           const active = item.id === current;
-          const style = {
-            fontSize: 13,
-            letterSpacing: ".1em",
-            textTransform: "uppercase" as const,
-            paddingBottom: 2,
-            borderBottom: `2px solid ${active ? "var(--color-accent)" : "transparent"}`,
-            color: active ? "var(--color-accent-700)" : "inherit",
-            opacity: item.href ? 1 : 0.45,
-            cursor: item.href ? "pointer" : "default",
-          };
-          return item.href ? (
-            <a key={item.id} href={item.href} aria-current={active ? "page" : undefined} style={style}>
+          return (
+            <a
+              key={item.id}
+              href={item.href}
+              aria-current={active ? "page" : undefined}
+              style={{
+                fontSize: 13,
+                letterSpacing: ".1em",
+                textTransform: "uppercase",
+                paddingBottom: 2,
+                borderBottom: `2px solid ${active ? "var(--color-accent)" : "transparent"}`,
+                color: active ? "var(--color-accent-700)" : "inherit",
+              }}
+            >
               {item.label}
             </a>
-          ) : (
-            <span key={item.id} style={style} title="Not built yet">
-              {item.label}
-            </span>
           );
         })}
       </nav>

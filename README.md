@@ -8,7 +8,7 @@ built on top of it.
 - Vercel deployment, https://helicon-homework.vercel.app, auto-deployed from `main`
 - TypeScript Next.js app
 - Tailwind UI
-- Neon (Postgres)
+- Neon (Postgres), schema applied from `designs/schema.sql` via `npm run db:schema`
 - Zod model validation
 
 ## Data
@@ -150,7 +150,8 @@ Rules that flag a job at risk of delay, delivery failure or bad data:
 
 ## Next
 
-- A loader script that reads the JSONL and populates the database
+- A loader script that reads the JSONL and populates the database, feeding each
+  line through `process_event`
 
 ## Deliverables
 

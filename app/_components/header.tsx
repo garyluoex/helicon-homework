@@ -1,6 +1,6 @@
 const NAV = [
   { id: "home", label: "Home", href: "/" },
-  { id: "jobs", label: "Jobs" },
+  { id: "jobs", label: "Jobs", href: "/jobs" },
   { id: "equipment", label: "Equipment" },
   { id: "customers", label: "Customers" },
 ];

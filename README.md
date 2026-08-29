@@ -202,13 +202,15 @@ per anomaly found in the data.
 All built. Every screen reads the live database; tab, sort and filter state
 lives in the URL, so any view is shareable. Every table the design makes
 sortable is sortable here, on the same columns and the same defaults, and every
-row the design makes clickable navigates.
+row the design makes clickable navigates. Tables hold every matching row rather
+than a first page of them, scrolling inside a pane with the header pinned, so a
+sort, a filter or the browser's own find reaches the whole set.
 
 | Page | Route | What it shows |
 |---|---|---|
 | Login | `/login` | one shared credential, gated by middleware |
 | Home | `/` | four KPIs over a selectable window, plus jobs with open blocks and sensor glitches by machine |
-| Jobs | `/jobs` | three tabs, nine sortable columns, filter by job, customer or part |
+| Jobs | `/jobs` | three tabs with counts, nine sortable columns, filter by job, customer or part |
 | Job | `/jobs/[id]` | six KPIs, lifecycle strip, unit and phase bars, and the job's full event timeline |
 | Customers | `/customers` | six KPIs and a sortable book of accounts |
 | Customer | `/customers/[id]` | one account's stats, its parts and its jobs |

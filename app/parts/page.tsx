@@ -68,24 +68,26 @@ export default async function PartsPage({
           </span>
         </div>
         <section className="card" style={{ padding: "var(--space-6)", gap: "var(--space-4)" }}>
-          <table className="table">
-            <thead>
-              <tr>{cols.map((c) => <Th key={c.key} col={c} active={c.key === sort.key} dir={sort.dir} href={href} />)}</tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <ClickRow key={r.part_id} href={`/parts/${r.part_id}`}>
-                  <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/parts/${r.part_id}`}>{r.part_id}</a></td>
-                  <td>{r.material_id}</td>
-                  <td style={numeric}>{num(r.jobs)}</td>
-                  <td style={numeric}>{num(r.customers)}</td>
-                  <td style={numeric}>{num(r.ordered)}</td>
-                  <td style={numeric}>{r.scrap_rate === null ? "—" : r.scrap_rate + "%"}</td>
-                  <td style={numeric}>{r.median_gap_h === null ? "—" : r.median_gap_h + " h"}</td>
-                </ClickRow>
-              ))}
-            </tbody>
-          </table>
+          <div className="table-scroll">
+            <table className="table">
+              <thead>
+                <tr>{cols.map((c) => <Th key={c.key} col={c} active={c.key === sort.key} dir={sort.dir} href={href} />)}</tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <ClickRow key={r.part_id} href={`/parts/${r.part_id}`}>
+                    <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/parts/${r.part_id}`}>{r.part_id}</a></td>
+                    <td>{r.material_id}</td>
+                    <td style={numeric}>{num(r.jobs)}</td>
+                    <td style={numeric}>{num(r.customers)}</td>
+                    <td style={numeric}>{num(r.ordered)}</td>
+                    <td style={numeric}>{r.scrap_rate === null ? "—" : r.scrap_rate + "%"}</td>
+                    <td style={numeric}>{r.median_gap_h === null ? "—" : r.median_gap_h + " h"}</td>
+                  </ClickRow>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       </main>
     </div>

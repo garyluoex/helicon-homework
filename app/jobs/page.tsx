@@ -21,12 +21,11 @@ const TABS = {
   completed: {
     label: "Completed", statuses: ["completed"], dateDir: "desc",
     dateCol: "j.completed_at", dateHead: "Completed",
-    footnote: "Showing the 25 most recent completions.",
+    footnote: "Every completed job in the feed.",
   },
 } as const;
 
 type TabKey = keyof typeof TABS;
-const ROW_LIMIT = 25;
 
 // The filter matches a job by its own id, its customer or its part. Written as
 // a function so each query can place it at whatever parameter number it needs.
@@ -94,8 +93,7 @@ export default async function JobsPage({
               coalesce(j.completed_at > j.target_due_at,
                        j.target_due_at < (select max(occurred_at) from events)) as late
        from jobs j where j.status = any($1) and ${filterOn(2)}
-       order by ${sort.sql} nulls last, j.job_id
-       limit ${ROW_LIMIT}`, [t.statuses, like]),
+       order by ${sort.sql} nulls last, j.job_id`, [t.statuses, like]),
   ]);
 
   const metricSets: Record<TabKey, { value: string; label: string }[]> = {
@@ -164,29 +162,31 @@ export default async function JobsPage({
               ))}
             </div>
 
-            <table className="table">
-              <thead>
-                <tr>{cols.map((c) => <Th key={c.key} col={c} active={c.key === sort.key} dir={sort.dir} href={href} />)}</tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => {
-                  const p = PRIORITY[r.priority] ?? PRIORITY.normal;
-                  return (
-                    <ClickRow key={r.job_id} href={`/jobs/${r.job_id}`}>
-                      <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/jobs/${r.job_id}`}>{r.job_id}</a></td>
-                      <td><a href={`/customers/${r.customer_id}`}>{customerLabel(r.customer_id)}</a></td>
-                      <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/parts/${r.part_id}`}>{r.part_id}</a></td>
-                      <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.facility_id}</td>
-                      <td><span className="tag" style={{ background: p.bg, color: p.ink }}>{p.label}</span></td>
-                      <td style={numeric}>{num(r.target_quantity)}</td>
-                      <td style={numeric}>{num(r.pass_units)} / {num(r.fail_units)}</td>
-                      <td style={{ ...numeric, color: r.late && r.status !== "completed" ? "var(--color-accent-800)" : "inherit" }}>{r.due ?? "—"}</td>
-                      <td style={numeric}>{r.section_date ?? "—"}</td>
-                    </ClickRow>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="table-scroll">
+              <table className="table">
+                <thead>
+                  <tr>{cols.map((c) => <Th key={c.key} col={c} active={c.key === sort.key} dir={sort.dir} href={href} />)}</tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => {
+                    const p = PRIORITY[r.priority] ?? PRIORITY.normal;
+                    return (
+                      <ClickRow key={r.job_id} href={`/jobs/${r.job_id}`}>
+                        <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/jobs/${r.job_id}`}>{r.job_id}</a></td>
+                        <td><a href={`/customers/${r.customer_id}`}>{customerLabel(r.customer_id)}</a></td>
+                        <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/parts/${r.part_id}`}>{r.part_id}</a></td>
+                        <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.facility_id}</td>
+                        <td><span className="tag" style={{ background: p.bg, color: p.ink }}>{p.label}</span></td>
+                        <td style={numeric}>{num(r.target_quantity)}</td>
+                        <td style={numeric}>{num(r.pass_units)} / {num(r.fail_units)}</td>
+                        <td style={{ ...numeric, color: r.late && r.status !== "completed" ? "var(--color-accent-800)" : "inherit" }}>{r.due ?? "—"}</td>
+                        <td style={numeric}>{r.section_date ?? "—"}</td>
+                      </ClickRow>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
             <div style={muted}>{t.footnote}</div>
           </section>
         </div>

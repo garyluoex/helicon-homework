@@ -103,24 +103,26 @@ export default async function CustomersPage({
         </div>
 
         <section className="card" style={{ padding: "var(--space-6)", gap: "var(--space-4)" }}>
-          <table className="table">
-            <thead>
-              <tr>{cols.map((c) => <Th key={c.key} col={c} active={c.key === sort.key} dir={sort.dir} href={href} />)}</tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <ClickRow key={r.customer_id} href={`/customers/${r.customer_id}`}>
-                  <td><a href={`/customers/${r.customer_id}`}>{customerLabel(r.customer_id)}</a></td>
-                  <td style={numeric}>{num(r.jobs)}</td>
-                  <td style={numeric}>{num(r.open_jobs)}</td>
-                  <td style={numeric}>{num(r.ordered)}</td>
-                  <td style={numeric}>{num(r.good)}</td>
-                  <td style={numeric}>{onTimePct(r.on_time, r.done)}</td>
-                  <td style={numeric}>{money(r.revenue)}</td>
-                </ClickRow>
-              ))}
-            </tbody>
-          </table>
+          <div className="table-scroll">
+            <table className="table">
+              <thead>
+                <tr>{cols.map((c) => <Th key={c.key} col={c} active={c.key === sort.key} dir={sort.dir} href={href} />)}</tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <ClickRow key={r.customer_id} href={`/customers/${r.customer_id}`}>
+                    <td><a href={`/customers/${r.customer_id}`}>{customerLabel(r.customer_id)}</a></td>
+                    <td style={numeric}>{num(r.jobs)}</td>
+                    <td style={numeric}>{num(r.open_jobs)}</td>
+                    <td style={numeric}>{num(r.ordered)}</td>
+                    <td style={numeric}>{num(r.good)}</td>
+                    <td style={numeric}>{onTimePct(r.on_time, r.done)}</td>
+                    <td style={numeric}>{money(r.revenue)}</td>
+                  </ClickRow>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <div style={muted}>
             Revenue is estimated from unit_price_estimate, which the feed supplies on {num(k.priced)} of {num(k.jobs)} jobs. Totals understate the book.
           </div>

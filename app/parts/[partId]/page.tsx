@@ -135,28 +135,30 @@ export default async function PartPage({
 
         <section className="card" style={{ padding: "var(--space-6)", gap: "var(--space-4)" }}>
           <h4 style={{ margin: 0 }}>Jobs for this part</h4>
-          <table className="table">
-            <thead>
-              <tr>{cols.map((c) => <Th key={c.key} col={c} active={c.key === sort.key} dir={sort.dir} href={href} />)}</tr>
-            </thead>
-            <tbody>
-              {jobs.map((j) => {
-                const s = STATUS[j.status] ?? STATUS.created;
-                return (
-                  <ClickRow key={j.job_id} href={`/jobs/${j.job_id}`}>
-                    <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/jobs/${j.job_id}`}>{j.job_id}</a></td>
-                    <td><a href={`/customers/${j.customer_id}`}>{customerLabel(j.customer_id)}</a></td>
-                    <td><span className="tag" style={{ background: s.bg, color: s.ink }}>{s.label}</span></td>
-                    <td style={{ fontVariantNumeric: "tabular-nums" }}>{j.facility_id}</td>
-                    <td style={numeric}>{num(j.target_quantity)}</td>
-                    <td style={numeric}>{num(j.cycle_units)}</td>
-                    <td style={numeric}>{num(j.pass_units)} / {num(j.fail_units)}</td>
-                    <td style={{ ...numeric, color: j.late && j.status !== "completed" ? "var(--color-accent-800)" : "inherit" }}>{j.due ?? "—"}</td>
-                  </ClickRow>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="table-scroll">
+            <table className="table">
+              <thead>
+                <tr>{cols.map((c) => <Th key={c.key} col={c} active={c.key === sort.key} dir={sort.dir} href={href} />)}</tr>
+              </thead>
+              <tbody>
+                {jobs.map((j) => {
+                  const s = STATUS[j.status] ?? STATUS.created;
+                  return (
+                    <ClickRow key={j.job_id} href={`/jobs/${j.job_id}`}>
+                      <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/jobs/${j.job_id}`}>{j.job_id}</a></td>
+                      <td><a href={`/customers/${j.customer_id}`}>{customerLabel(j.customer_id)}</a></td>
+                      <td><span className="tag" style={{ background: s.bg, color: s.ink }}>{s.label}</span></td>
+                      <td style={{ fontVariantNumeric: "tabular-nums" }}>{j.facility_id}</td>
+                      <td style={numeric}>{num(j.target_quantity)}</td>
+                      <td style={numeric}>{num(j.cycle_units)}</td>
+                      <td style={numeric}>{num(j.pass_units)} / {num(j.fail_units)}</td>
+                      <td style={{ ...numeric, color: j.late && j.status !== "completed" ? "var(--color-accent-800)" : "inherit" }}>{j.due ?? "—"}</td>
+                    </ClickRow>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </section>
       </main>
     </div>

@@ -89,32 +89,34 @@ export default async function EquipmentPage({
           <section className="card" style={{ padding: "var(--space-6)", gap: "var(--space-4)" }}>
             <div className="card-kicker">{g.kicker}</div>
             <h4 style={{ margin: 0 }}>{g.title}</h4>
-            <table className="table">
-              <thead>
-                <tr>{cols.map((c) => <Th key={c.key} col={c} active={c.key === sort.key} dir={sort.dir} href={href} />)}</tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => {
-                  const unhealthy = Number(r.glitches) > 1;
-                  return (
-                    <tr key={r.machine_id}>
-                      <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.machine_id}</td>
-                      <td>
-                        <span className="tag" style={{
-                          background: unhealthy ? "#f7dcda" : "var(--color-accent-2-100)",
-                          color: unhealthy ? "#7d2a22" : "var(--color-accent-2-800)",
-                        }}>
-                          {unhealthy ? "Unhealthy" : "Healthy"}
-                        </span>
-                      </td>
-                      <td style={numeric}>{num(r.events)}</td>
-                      <td style={numeric}>{num(r.metric)}</td>
-                      <td style={numeric}>{num(r.glitches)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="table-scroll">
+              <table className="table">
+                <thead>
+                  <tr>{cols.map((c) => <Th key={c.key} col={c} active={c.key === sort.key} dir={sort.dir} href={href} />)}</tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => {
+                    const unhealthy = Number(r.glitches) > 1;
+                    return (
+                      <tr key={r.machine_id}>
+                        <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.machine_id}</td>
+                        <td>
+                          <span className="tag" style={{
+                            background: unhealthy ? "#f7dcda" : "var(--color-accent-2-100)",
+                            color: unhealthy ? "#7d2a22" : "var(--color-accent-2-800)",
+                          }}>
+                            {unhealthy ? "Unhealthy" : "Healthy"}
+                          </span>
+                        </td>
+                        <td style={numeric}>{num(r.events)}</td>
+                        <td style={numeric}>{num(r.metric)}</td>
+                        <td style={numeric}>{num(r.glitches)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </section>
         </div>
       </main>

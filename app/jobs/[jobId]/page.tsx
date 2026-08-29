@@ -246,16 +246,18 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
 
             <section className="card" style={{ padding: "var(--space-6)", gap: "var(--space-4)" }}>
               <h4 style={{ margin: 0 }}>Job details</h4>
-              <table className="table">
-                <tbody>
-                  {facts.map(([label, value]) => (
-                    <tr key={label}>
-                      <td style={{ color: "color-mix(in srgb, var(--color-text) 60%, transparent)", width: "45%" }}>{label}</td>
-                      <td style={{ fontVariantNumeric: "tabular-nums" }}>{value}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="table-scroll">
+                <table className="table">
+                  <tbody>
+                    {facts.map(([label, value]) => (
+                      <tr key={label}>
+                        <td style={{ color: "color-mix(in srgb, var(--color-text) 60%, transparent)", width: "45%" }}>{label}</td>
+                        <td style={{ fontVariantNumeric: "tabular-nums" }}>{value}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
           </div>
 

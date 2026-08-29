@@ -16,8 +16,8 @@ type Kpis = {
   feed_end: string; window_start: string; window_days: string;
   in_progress: string; done_in_range: string; tools: string;
   pressed: string; pass_units: string; fail_units: string;
-  // Totals for the attention notes. The tables below show at most 8 rows, so
-  // counting what is rendered would understate the real backlog.
+  // Totals for the attention notes. Kept as their own counts rather than read
+  // off the rendered rows, so the heading stays right whatever the tables show.
   open_blocks: string; glitch_events: string; glitch_machines: string;
 };
 type JobRow = { job_id: string; cause: string | null; where_at: string; when_at: string; silent_days: string };
@@ -90,7 +90,7 @@ export default async function Home({
                 floor(extract(epoch from (feed.hi - j.last_event_at)) / 86400) as silent_days
          from b join jobs j using (job_id), feed
          where b.blocks > b.unblocks) r
-       order by ${jobSort.sql} nulls last, job_id limit 8`),
+       order by ${jobSort.sql} nulls last, job_id`),
 
     query<EquipRow>(
       `with feed as (select max(occurred_at) as hi from events)
@@ -103,7 +103,7 @@ export default async function Home({
                 floor(extract(epoch from (feed.hi - max(e.occurred_at))) / 86400) as silent_days
          from events e, feed where e.event_type = 'sensor_glitch'
          group by 1, feed.hi) r
-       order by ${equipSort.sql} nulls last, where_at limit 8`),
+       order by ${equipSort.sql} nulls last, where_at`),
 
     chrome(),
   ]);
@@ -203,22 +203,24 @@ export default async function Home({
               <div style={{ fontFamily: "var(--font-heading)", fontSize: 16, letterSpacing: ".02em" }}>Jobs</div>
               <span style={muted}>{n(k.open_blocks)} jobs with more blocks than unblocks</span>
             </div>
-            <table className="table">
-              <thead>
-                <tr>{jobCols.map((c) => <Th key={c.key} col={c} active={c.key === jobSort.key} dir={jobSort.dir} href={jobHref} />)}</tr>
-              </thead>
-              <tbody>
-                {jobRows.map((r) => (
-                  <ClickRow key={r.job_id} href={`/jobs/${r.job_id}`}>
-                    <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/jobs/${r.job_id}`}>{r.job_id}</a></td>
-                    <td>{r.cause ?? "unstated cause"}</td>
-                    <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.where_at}</td>
-                    <td style={numeric}>{r.when_at}</td>
-                    <td style={numeric}>{r.silent_days}</td>
-                  </ClickRow>
-                ))}
-              </tbody>
-            </table>
+            <div className="table-scroll">
+              <table className="table">
+                <thead>
+                  <tr>{jobCols.map((c) => <Th key={c.key} col={c} active={c.key === jobSort.key} dir={jobSort.dir} href={jobHref} />)}</tr>
+                </thead>
+                <tbody>
+                  {jobRows.map((r) => (
+                    <ClickRow key={r.job_id} href={`/jobs/${r.job_id}`}>
+                      <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/jobs/${r.job_id}`}>{r.job_id}</a></td>
+                      <td>{r.cause ?? "unstated cause"}</td>
+                      <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.where_at}</td>
+                      <td style={numeric}>{r.when_at}</td>
+                      <td style={numeric}>{r.silent_days}</td>
+                    </ClickRow>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: "var(--space-4)" }}>
@@ -228,22 +230,24 @@ export default async function Home({
                 {n(k.glitch_events)} anomalies across {n(k.glitch_machines)} machines
               </span>
             </div>
-            <table className="table">
-              <thead>
-                <tr>{equipCols.map((c) => <Th key={c.key} col={c} active={c.key === equipSort.key} dir={equipSort.dir} href={equipHref} />)}</tr>
-              </thead>
-              <tbody>
-                {equipRows.map((r) => (
-                  <tr key={r.where_at}>
-                    <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.where_at}</td>
-                    <td>{r.signals}</td>
-                    <td style={numeric}>{r.alerts}</td>
-                    <td style={numeric}>{r.when_at}</td>
-                    <td style={numeric}>{r.silent_days}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="table-scroll">
+              <table className="table">
+                <thead>
+                  <tr>{equipCols.map((c) => <Th key={c.key} col={c} active={c.key === equipSort.key} dir={equipSort.dir} href={equipHref} />)}</tr>
+                </thead>
+                <tbody>
+                  {equipRows.map((r) => (
+                    <tr key={r.where_at}>
+                      <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.where_at}</td>
+                      <td>{r.signals}</td>
+                      <td style={numeric}>{r.alerts}</td>
+                      <td style={numeric}>{r.when_at}</td>
+                      <td style={numeric}>{r.silent_days}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
       </main>

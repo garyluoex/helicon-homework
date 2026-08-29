@@ -124,45 +124,49 @@ export default async function CustomerPage({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 28, alignItems: "start" }}>
           <section className="card" style={{ padding: "var(--space-6)", gap: "var(--space-4)" }}>
             <h4 style={{ margin: 0 }}>Parts built for this customer</h4>
-            <table className="table">
-              <thead>
-                <tr>{partCols.map((c) => <Th key={c.key} col={c} active={c.key === partSort.key} dir={partSort.dir} href={partHref} />)}</tr>
-              </thead>
-              <tbody>
-                {parts.map((p) => (
-                  <ClickRow key={p.part_id} href={`/parts/${p.part_id}`}>
-                    <td><a href={`/parts/${p.part_id}`}>{p.part_id}</a></td>
-                    <td style={{ fontSize: 12 }}>{p.material_id}</td>
-                    <td style={numeric}>{num(p.jobs)}</td>
-                    <td style={numeric}>{num(p.units)}</td>
-                  </ClickRow>
-                ))}
-              </tbody>
-            </table>
+            <div className="table-scroll">
+              <table className="table">
+                <thead>
+                  <tr>{partCols.map((c) => <Th key={c.key} col={c} active={c.key === partSort.key} dir={partSort.dir} href={partHref} />)}</tr>
+                </thead>
+                <tbody>
+                  {parts.map((p) => (
+                    <ClickRow key={p.part_id} href={`/parts/${p.part_id}`}>
+                      <td><a href={`/parts/${p.part_id}`}>{p.part_id}</a></td>
+                      <td style={{ fontSize: 12 }}>{p.material_id}</td>
+                      <td style={numeric}>{num(p.jobs)}</td>
+                      <td style={numeric}>{num(p.units)}</td>
+                    </ClickRow>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section className="card" style={{ padding: "var(--space-6)", gap: "var(--space-4)" }}>
             <h4 style={{ margin: 0 }}>Jobs</h4>
-            <table className="table">
-              <thead>
-                <tr>{jobCols.map((c) => <Th key={c.key} col={c} active={c.key === jobSort.key} dir={jobSort.dir} href={jobHref} />)}</tr>
-              </thead>
-              <tbody>
-                {jobs.map((j) => {
-                  const s = STATUS[j.status] ?? STATUS.created;
-                  return (
-                    <ClickRow key={j.job_id} href={`/jobs/${j.job_id}`}>
-                      <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/jobs/${j.job_id}`}>{j.job_id}</a></td>
-                      <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/parts/${j.part_id}`}>{j.part_id}</a></td>
-                      <td><span className="tag" style={{ background: s.bg, color: s.ink }}>{s.label}</span></td>
-                      <td style={numeric}>{num(j.target_quantity)}</td>
-                      <td style={numeric}>{num(j.good_quantity)}</td>
-                      <td style={{ ...numeric, color: j.late && j.status !== "completed" ? "var(--color-accent-800)" : "inherit" }}>{j.due ?? "—"}</td>
-                    </ClickRow>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="table-scroll">
+              <table className="table">
+                <thead>
+                  <tr>{jobCols.map((c) => <Th key={c.key} col={c} active={c.key === jobSort.key} dir={jobSort.dir} href={jobHref} />)}</tr>
+                </thead>
+                <tbody>
+                  {jobs.map((j) => {
+                    const s = STATUS[j.status] ?? STATUS.created;
+                    return (
+                      <ClickRow key={j.job_id} href={`/jobs/${j.job_id}`}>
+                        <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/jobs/${j.job_id}`}>{j.job_id}</a></td>
+                        <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={`/parts/${j.part_id}`}>{j.part_id}</a></td>
+                        <td><span className="tag" style={{ background: s.bg, color: s.ink }}>{s.label}</span></td>
+                        <td style={numeric}>{num(j.target_quantity)}</td>
+                        <td style={numeric}>{num(j.good_quantity)}</td>
+                        <td style={{ ...numeric, color: j.late && j.status !== "completed" ? "var(--color-accent-800)" : "inherit" }}>{j.due ?? "—"}</td>
+                      </ClickRow>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </section>
         </div>
       </main>

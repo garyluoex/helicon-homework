@@ -96,9 +96,9 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
     (Date.parse((completed ? job.completed_at : `${facets.feed_end}T23:59:59Z`) ?? "") - Date.parse(job.due_at ?? "")) / 86400000;
 
   const kpis = [
-    { label: "Lead time", value: dur(leadHours), note: completed ? "created to completion" : "created to last event, still open" },
-    { label: "Tool wait", value: dur(hoursBetween(job.created_event_at, job.tool_ready_at)), note: "created to tool_ready" },
-    { label: "Press queue", value: dur(hoursBetween(job.tool_ready_at, job.started_at)), note: "tool_ready to job_started" },
+    { label: "Lead time", value: dur(leadHours), note: completed ? "from order booked to closed out" : "from order booked to last update, still open" },
+    { label: "Tool wait", value: dur(hoursBetween(job.created_event_at, job.tool_ready_at)), note: "from order booked to tooling ready" },
+    { label: "Press queue", value: dur(hoursBetween(job.tool_ready_at, job.started_at)), note: "from tooling ready to first press" },
     { label: "Run span", value: dur(hoursBetween(job.first_cycle_at, job.last_cycle_at)), note: `${num(job.cycle_count)} cycles, first to last` },
     { label: "Yield", value: completed ? ((n("good_quantity") / (n("good_quantity") + n("scrap_quantity"))) * 100).toFixed(1) + "%" : "—",
       note: completed ? `${num(job.good_quantity)} good, ${num(job.scrap_quantity)} scrap` : "no completion event" },

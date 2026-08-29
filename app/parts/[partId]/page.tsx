@@ -73,11 +73,11 @@ export default async function PartPage({
   ]);
 
   const kpis = [
-    { label: "Jobs", value: num(stats.jobs), note: `${num(stats.customers)} customers` },
-    { label: "Units ordered", value: num(stats.ordered), note: "across the window" },
-    { label: "Good delivered", value: num(stats.good), note: `${num(stats.scrap)} scrapped` },
-    { label: "Scrap rate", value: stats.scrap_rate === null ? "—" : stats.scrap_rate + "%", note: "scrap against good + scrap" },
-    { label: "Median cycle gap", value: stats.median_gap_h === null ? "—" : stats.median_gap_h + " h", note: "wall clock between consecutive cycles" },
+    { label: "Jobs", value: num(stats.jobs), note: `for ${num(stats.customers)} different customers` },
+    { label: "Units ordered", value: num(stats.ordered), note: "ordered across the feed window" },
+    { label: "Good delivered", value: num(stats.good), note: `${num(stats.scrap)} units scrapped` },
+    { label: "Scrap rate", value: stats.scrap_rate === null ? "—" : stats.scrap_rate + "%", note: "scrapped share of finished units" },
+    { label: "Median cycle gap", value: stats.median_gap_h === null ? "—" : stats.median_gap_h + " h", note: "typical wall clock time between two presses" },
   ];
 
   const cols: Column[] = [

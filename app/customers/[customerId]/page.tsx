@@ -43,9 +43,7 @@ export default async function CustomerPage({
               coalesce(sum(good_quantity), 0)::text                       as good,
               count(*) filter (where completed_at is not null)::text      as done,
               count(*) filter (where completed_at <= target_due_at)::text as on_time,
-              round(${REVENUE})::text                                     as revenue,
-              (select round(100.0 * count(*) filter (where unit_price_estimate is not null)
-                            / nullif(count(*), 0)) from jobs)::text       as priced_pct
+              round(${REVENUE})::text                                     as revenue
        from jobs where customer_id = $1`, [customerId]),
     query<PartRow>(
       `select j.part_id, max(p.material_id) as material_id,
@@ -64,11 +62,11 @@ export default async function CustomerPage({
   if (Number(stats.jobs) === 0) notFound();
 
   const kpis = [
-    { label: "Jobs", value: num(stats.jobs), note: `${num(stats.open_jobs)} open` },
-    { label: "Units ordered", value: num(stats.ordered), note: `across ${num(stats.parts)} parts` },
-    { label: "Good delivered", value: num(stats.good), note: `${num(stats.done)} completed jobs` },
-    { label: "On time", value: Number(stats.done) ? Math.round((Number(stats.on_time) / Number(stats.done)) * 100) + "%" : "—", note: "against target date" },
-    { label: "Est. revenue", value: money(stats.revenue), note: `price on ${stats.priced_pct}% of jobs` },
+    { label: "Jobs", value: num(stats.jobs), note: `${num(stats.open_jobs)} not yet completed` },
+    { label: "Units ordered", value: num(stats.ordered), note: `across ${num(stats.parts)} different parts` },
+    { label: "Good delivered", value: num(stats.good), note: `from ${num(stats.done)} completed jobs` },
+    { label: "On time", value: Number(stats.done) ? Math.round((Number(stats.on_time) / Number(stats.done)) * 100) + "%" : "—", note: "delivered on or before the target date" },
+    { label: "Est. revenue", value: money(stats.revenue), note: "the feed quotes a price on about half the jobs" },
   ];
 
   const partCols: Column[] = [

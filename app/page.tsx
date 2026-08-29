@@ -14,7 +14,7 @@ const RANGES = [
 
 type Kpis = {
   feed_end: string; window_start: string; window_days: string;
-  in_progress: string; done_in_range: string; tools: string;
+  created_in_range: string; done_in_range: string; tools: string;
   pressed: string; pass_units: string; fail_units: string;
   // Totals for the attention notes. Kept as their own counts rather than read
   // off the rendered rows, so the heading stays right whatever the tables show.
@@ -56,7 +56,7 @@ export default async function Home({
       `select to_char(max(occurred_at), 'YYYY-MM-DD') as feed_end,
               to_char(greatest(min(occurred_at), ${from}), 'YYYY-MM-DD') as window_start,
               ceil(extract(epoch from (max(occurred_at) - greatest(min(occurred_at), ${from}))) / 86400)::text as window_days,
-              (select count(*) from jobs where status <> 'completed')::text as in_progress,
+              (select count(*) from jobs where created_event_at >= ${from})::text as created_in_range,
               (select count(*) from jobs where completed_at >= ${from})::text as done_in_range,
               (select count(*) from events where event_type = 'tool_ready' and occurred_at >= ${from})::text as tools,
               (select coalesce(sum(quantity), 0) from events where event_type = 'cycle_completed' and occurred_at >= ${from})::text as pressed,
@@ -110,10 +110,10 @@ export default async function Home({
 
   const inspected = Number(k.pass_units) + Number(k.fail_units);
   const kpis = [
-    { label: "In progress jobs", value: n(k.in_progress), note: `not yet completed · ${n(k.done_in_range)} completed in range` },
-    { label: "Tools prepared", value: n(k.tools), note: "tool_ready events in range" },
-    { label: "Units pressed", value: n(k.pressed), note: "cycle throughput, not order progress" },
-    { label: "Units inspected", value: n(inspected), note: `${n(k.pass_units)} passed, ${n(k.fail_units)} failed` },
+    { label: "Created jobs", value: n(k.created_in_range), note: `new orders in this range · ${n(k.done_in_range)} completed` },
+    { label: "Tools prepared", value: n(k.tools), note: "tooling made ready for a job" },
+    { label: "Units pressed", value: n(k.pressed), note: "total units out of the presses" },
+    { label: "Units inspected", value: n(inspected), note: `${n(k.pass_units)} passed, ${n(k.fail_units)} failed by QC` },
   ];
 
   const jobCols: Column[] = [

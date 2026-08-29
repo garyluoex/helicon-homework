@@ -63,12 +63,12 @@ export default async function CustomersPage({
     Number(done) ? Math.round((Number(onTime) / Number(done)) * 100) + "%" : "—";
 
   const kpis = [
-    { label: "Customers", value: num(k.customers), note: `${num(k.customers_open)} with work open` },
-    { label: "Jobs booked", value: num(k.jobs), note: `${num(k.open_jobs)} still open` },
-    { label: "Units ordered", value: num(k.ordered), note: "across the window" },
-    { label: "Good delivered", value: num(k.good), note: `${num(k.done)} completed jobs` },
-    { label: "On time", value: onTimePct(k.on_time, k.done), note: "against target date" },
-    { label: "Est. revenue", value: money(k.revenue), note: `price on ${num(k.priced)} of ${num(k.jobs)} jobs` },
+    { label: "Customers", value: num(k.customers), note: `${num(k.customers_open)} with work still running` },
+    { label: "Jobs booked", value: num(k.jobs), note: `${num(k.open_jobs)} not yet completed` },
+    { label: "Units ordered", value: num(k.ordered), note: "ordered across the feed window" },
+    { label: "Good delivered", value: num(k.good), note: `from ${num(k.done)} completed jobs` },
+    { label: "On time", value: onTimePct(k.on_time, k.done), note: "delivered on or before the target date" },
+    { label: "Est. revenue", value: money(k.revenue), note: `a price is quoted on ${num(k.priced)} of ${num(k.jobs)} jobs` },
   ];
 
   const cols: Column[] = [

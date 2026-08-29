@@ -1,0 +1,602 @@
+<title>Event Store Schema Proposal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@400;500;600&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Newsreader:opsz,wght@6..72,400;6..72,600&display=swap">
+<style>
+  :root {
+    --ground: #EEECEE;
+    --surface: #FCFBFC;
+    --surface-2: #E6E2E7;
+    --sunken: #E0DBE2;
+    --border: #D3CCD5;
+    --border-soft: #E2DDE4;
+    --ink: #191419;
+    --ink-2: #443B47;
+    --muted: #6C6270;
+    --accent: #6B2D5C;
+    --accent-ink: #57204A;
+    --accent-wash: rgba(107, 45, 92, 0.10);
+    --accent-line: rgba(107, 45, 92, 0.32);
+    --pk: #8A6410;
+    --fk: #2C5F68;
+    --good: #38664A;
+    --warn: #8B5A12;
+    --bad: #97303A;
+    --bad-wash: rgba(151, 48, 58, 0.10);
+    --warn-wash: rgba(139, 90, 18, 0.12);
+    --good-wash: rgba(56, 102, 74, 0.12);
+    --code-bg: #F5F2F6;
+    --shadow: 0 1px 2px rgba(30, 20, 32, .06), 0 10px 26px -20px rgba(30, 20, 32, .55);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #131015;
+      --surface: #1B171D;
+      --surface-2: #241E27;
+      --sunken: #17131A;
+      --border: #342C38;
+      --border-soft: #261F2A;
+      --ink: #EFE9F0;
+      --ink-2: #C7BCC9;
+      --muted: #998C9C;
+      --accent: #D28CBE;
+      --accent-ink: #E6ADD6;
+      --accent-wash: rgba(210, 140, 190, 0.14);
+      --accent-line: rgba(210, 140, 190, 0.40);
+      --pk: #DCB25C;
+      --fk: #6FB6C0;
+      --good: #6DBB8E;
+      --warn: #D8A455;
+      --bad: #E07E86;
+      --bad-wash: rgba(224, 126, 134, 0.14);
+      --warn-wash: rgba(216, 164, 85, 0.14);
+      --good-wash: rgba(109, 187, 142, 0.14);
+      --code-bg: #16121A;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 12px 28px -20px rgba(0, 0, 0, .9);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #131015;
+    --surface: #1B171D;
+    --surface-2: #241E27;
+    --sunken: #17131A;
+    --border: #342C38;
+    --border-soft: #261F2A;
+    --ink: #EFE9F0;
+    --ink-2: #C7BCC9;
+    --muted: #998C9C;
+    --accent: #D28CBE;
+    --accent-ink: #E6ADD6;
+    --accent-wash: rgba(210, 140, 190, 0.14);
+    --accent-line: rgba(210, 140, 190, 0.40);
+    --pk: #DCB25C;
+    --fk: #6FB6C0;
+    --good: #6DBB8E;
+    --warn: #D8A455;
+    --bad: #E07E86;
+    --bad-wash: rgba(224, 126, 134, 0.14);
+    --warn-wash: rgba(216, 164, 85, 0.14);
+    --good-wash: rgba(109, 187, 142, 0.14);
+    --code-bg: #16121A;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 12px 28px -20px rgba(0, 0, 0, .9);
+  }
+
+  * { box-sizing: border-box; }
+  body { background: var(--ground); color: var(--ink);
+         font-family: Newsreader, Georgia, serif; font-size: 17px; line-height: 1.6;
+         -webkit-font-smoothing: antialiased; }
+  .shell { max-width: 1200px; margin: 0 auto; padding: 40px 24px 100px;
+           display: grid; grid-template-columns: 1fr; gap: 34px; }
+  @media (min-width: 1060px) {
+    .shell { grid-template-columns: 208px minmax(0, 1fr); gap: 46px; align-items: start; }
+    .nav { position: sticky; top: 22px; }
+  }
+
+  h1, h2, h3, h4 { font-family: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
+                   margin: 0; letter-spacing: -0.02em; }
+  h1 { font-size: clamp(31px, 4.6vw, 47px); font-weight: 800; line-height: 1.02;
+       letter-spacing: -0.035em; text-wrap: balance; }
+  h2 { font-size: 24px; font-weight: 700; }
+  h3 { font-size: 17px; font-weight: 600; }
+  .lbl { font-family: "Azeret Mono", monospace; font-size: 10.5px; font-weight: 500;
+         text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
+  .mono { font-family: "Azeret Mono", ui-monospace, Menlo, monospace; }
+  p { margin: 0; }
+  a { color: var(--accent-ink); }
+
+  header.top { grid-column: 1 / -1; border-bottom: 2px solid var(--ink); padding-bottom: 24px; }
+  .kick { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; margin-bottom: 14px; }
+  .kick .src { font-family: "Azeret Mono", monospace; font-size: 11.5px; padding: 2px 8px;
+               border-radius: 3px; background: var(--accent-wash); color: var(--accent-ink); }
+  .deck { margin-top: 14px; color: var(--ink-2); max-width: 66ch; font-size: 18px; }
+
+  .facts { grid-column: 1 / -1; display: grid; gap: 1px; background: var(--border);
+           border: 1px solid var(--border); border-radius: 7px; overflow: hidden;
+           grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); }
+  .facts div { background: var(--surface); padding: 13px 15px; }
+  .facts .v { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 25px;
+              letter-spacing: -0.03em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .facts .k { margin-top: 4px; }
+
+  /* nav */
+  .nav-inner { display: grid; gap: 2px; max-height: calc(100vh - 44px); overflow-y: auto; }
+  .nav a { display: block; padding: 4px 9px; border-radius: 5px; text-decoration: none;
+           color: var(--ink-2); font-family: "Azeret Mono", monospace; font-size: 12px;
+           border-left: 2px solid transparent; }
+  .nav a:hover { background: var(--accent-wash); color: var(--accent-ink); border-left-color: var(--accent); }
+  .nav a.on { background: var(--accent-wash); color: var(--accent-ink); border-left-color: var(--accent); }
+  .nav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .nav .grp { margin: 14px 0 4px; }
+
+  main { min-width: 0; display: grid; gap: 46px; }
+  section { display: grid; gap: 16px; scroll-margin-top: 20px; }
+  .head { border-bottom: 1px solid var(--border); padding-bottom: 9px;
+          display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .head p { color: var(--muted); font-size: 15px; }
+  .prose { max-width: 68ch; display: grid; gap: 12px; color: var(--ink-2); }
+  .prose strong { color: var(--ink); font-weight: 600; }
+  code, .mono { font-variant-numeric: tabular-nums; }
+  p code, li code, td code { font-family: "Azeret Mono", monospace; font-size: 13px;
+       background: var(--surface-2); padding: 1px 5px; border-radius: 3px; color: var(--ink-2); }
+
+  /* principles */
+  .rules { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(292px, 1fr)); }
+  .rule { background: var(--surface); border: 1px solid var(--border); border-radius: 7px;
+          padding: 14px 16px; box-shadow: var(--shadow); display: grid; gap: 6px; align-content: start; }
+  .rule .n { font-family: "Azeret Mono", monospace; font-size: 11px; color: var(--accent-ink);
+             background: var(--accent-wash); border-radius: 3px; padding: 1px 6px; justify-self: start; }
+  .rule h3 { font-size: 15.5px; }
+  .rule p { font-size: 15px; color: var(--ink-2); }
+  .rule .from { font-family: "Azeret Mono", monospace; font-size: 11.5px; color: var(--muted);
+                border-top: 1px dotted var(--border); padding-top: 7px; }
+
+  /* figures */
+  figure { margin: 0; background: var(--surface); border: 1px solid var(--border);
+           border-radius: 8px; padding: 18px 18px 14px; box-shadow: var(--shadow); }
+  figure svg { display: block; width: 100%; max-width: 100%; height: auto; color: var(--ink-2); }
+  figure svg .acs { stroke: var(--accent); }
+  figure svg .act { fill: var(--accent); }
+  figure svg .acf { fill: var(--accent); }
+  figcaption { margin-top: 12px; font-size: 14.5px; color: var(--muted); border-top: 1px solid var(--border-soft);
+               padding-top: 10px; }
+
+  /* table cards */
+  .tcard { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+           box-shadow: var(--shadow); overflow: hidden; scroll-margin-top: 18px; }
+  .tcard-head { padding: 14px 18px; display: grid; gap: 9px; border-bottom: 1px solid var(--border-soft); }
+  .tcard-title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .tname { font-family: "Azeret Mono", monospace; font-weight: 600; font-size: 17px; }
+  .tag { font-family: "Azeret Mono", monospace; font-size: 10.5px; text-transform: uppercase;
+         letter-spacing: .1em; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .tag.write { background: var(--accent-wash); color: var(--accent-ink); }
+  .tag.ledger { background: var(--good-wash); color: var(--good); }
+  .tag.auth { background: var(--warn-wash); color: var(--warn); }
+  .tcard-head p { font-size: 15px; color: var(--ink-2); max-width: 74ch; }
+  .writers { display: flex; flex-wrap: wrap; gap: 5px; align-items: baseline; }
+  .writers .w { font-family: "Azeret Mono", monospace; font-size: 11.5px; padding: 1px 7px;
+                border-radius: 4px; background: var(--surface-2); color: var(--ink-2);
+                border: 1px solid var(--border-soft); }
+
+  pre { margin: 0; overflow-x: auto; background: var(--code-bg); padding: 14px 18px 16px;
+        border-top: 1px solid var(--border-soft); }
+  pre code { font-family: "Azeret Mono", ui-monospace, Menlo, monospace; font-size: 12.5px;
+             line-height: 1.62; white-space: pre; color: var(--ink-2); background: none; padding: 0; }
+  .sql-c { color: var(--muted); font-style: italic; }
+  .sql-k { color: var(--accent-ink); font-weight: 500; }
+  .sql-t { color: var(--fk); }
+  .sql-s { color: var(--good); }
+  .sql-n { color: var(--pk); }
+
+  /* matrix */
+  .mx { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+        box-shadow: var(--shadow); overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { padding: 7px 10px; text-align: left; vertical-align: top; }
+  thead th { font-family: "Azeret Mono", monospace; font-size: 10px; text-transform: uppercase;
+             letter-spacing: .09em; color: var(--muted); font-weight: 500; white-space: nowrap;
+             border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); }
+  tbody tr { border-top: 1px solid var(--border-soft); }
+  tbody tr:hover { background: var(--accent-wash); }
+  td.et { font-family: "Azeret Mono", monospace; white-space: nowrap; color: var(--ink); }
+  td.n { font-family: "Azeret Mono", monospace; text-align: right; color: var(--muted);
+         font-variant-numeric: tabular-nums; }
+  td.cell { text-align: center; font-family: "Azeret Mono", monospace; font-size: 11px; }
+  .mk { display: inline-block; min-width: 20px; padding: 1px 6px; border-radius: 4px; }
+  .mk.ins { background: var(--good-wash); color: var(--good); }
+  .mk.ups { background: var(--accent-wash); color: var(--accent-ink); }
+  .mk.upd { background: var(--surface-2); color: var(--ink-2); }
+  .mk.cond { background: transparent; color: var(--muted); border: 1px dashed var(--border); }
+  .mk.none { color: var(--muted); opacity: .45; }
+  td.eff { font-size: 12.5px; color: var(--ink-2); min-width: 250px; }
+  td.eff code { font-size: 11.5px; background: transparent; padding: 0; color: var(--ink-2); }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12.5px; color: var(--muted);
+            font-family: "Azeret Mono", monospace; }
+
+  /* dq + questions */
+  .pairs { display: grid; gap: 10px; }
+  .pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 0;
+          background: var(--surface); border: 1px solid var(--border); border-radius: 7px;
+          overflow: hidden; box-shadow: var(--shadow); }
+  @media (max-width: 700px) { .pair { grid-template-columns: 1fr; } }
+  .pair .f, .pair .r { padding: 11px 15px; font-size: 14.5px; }
+  .pair .f { background: var(--bad-wash); color: var(--ink-2); border-right: 1px solid var(--border-soft); }
+  .pair .r { color: var(--ink-2); }
+  .pair .f b { color: var(--bad); font-weight: 600; display: block; font-size: 12px;
+               font-family: "Azeret Mono", monospace; text-transform: uppercase; letter-spacing: .08em;
+               margin-bottom: 3px; }
+  .pair .r b { color: var(--good); font-weight: 600; display: block; font-size: 12px;
+               font-family: "Azeret Mono", monospace; text-transform: uppercase; letter-spacing: .08em;
+               margin-bottom: 3px; }
+  .qs { display: grid; gap: 11px; counter-reset: q; }
+  .q { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+       border-radius: 7px; padding: 13px 16px; box-shadow: var(--shadow); }
+  .q h3 { margin-bottom: 4px; }
+  .q p { font-size: 15px; color: var(--ink-2); }
+  .q .rec { margin-top: 7px; font-size: 14px; color: var(--ink-2);
+            border-top: 1px dotted var(--border); padding-top: 7px; }
+  .q .rec b { font-family: "Azeret Mono", monospace; font-size: 11.5px; text-transform: uppercase;
+              letter-spacing: .08em; color: var(--accent-ink); }
+  footer { grid-column: 1 / -1; border-top: 1px solid var(--border); padding-top: 15px;
+           color: var(--muted); font-size: 14px; }
+</style>
+
+<div class="shell">
+  <header class="top">
+    <div class="kick">
+      <span class="lbl">Schema proposal</span>
+      <span class="src">postgresql 14+</span>
+      <span class="src" id="src"></span>
+    </div>
+    <h1>Event Store Schema Proposal</h1>
+    <p class="deck">Ten tables for the manufacturing event stream, where the feed is the only writer and every
+      other table is a projection that can be rebuilt from it. The shape below is not generic: each decision
+      traces to something the 19,519-event sample actually does, including the things it does wrong.</p>
+  </header>
+
+  <div class="facts" id="facts"></div>
+
+  <nav class="nav" aria-label="Sections">
+    <div class="nav-inner" id="nav"></div>
+  </nav>
+
+  <main>
+    <section id="approach">
+      <div class="head"><h2>The approach</h2><p>Seven rules everything else follows from.</p></div>
+      <div class="rules" id="rules"></div>
+    </section>
+
+    <section id="writepath">
+      <div class="head"><h2>How one event is written</h2><p>The order of writes, and the gate every counter sits behind.</p></div>
+      <figure>
+        <svg viewBox="0 0 980 340" role="img" aria-label="An event moves through four steps: inserts into three registries, a job row, the ledger insert on the event_id primary key that acts as the deduplication gate, and the job projection update. A repeated event_id is dropped at the gate before the projection is touched.">
+          <defs>
+            <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+            </marker>
+            <marker id="ar-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" class="acf"/>
+            </marker>
+          </defs>
+
+          <!-- feed -->
+          <rect x="10" y="118" width="118" height="56" rx="6" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="69" y="140" text-anchor="middle" font-size="12.5" fill="currentColor" font-family="monospace">one JSONL</text>
+          <text x="69" y="157" text-anchor="middle" font-size="12.5" fill="currentColor" font-family="monospace">line</text>
+
+          <line x1="128" y1="146" x2="176" y2="146" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)"/>
+
+          <!-- step 1 -->
+          <rect x="178" y="34" width="176" height="122" rx="6" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="190" y="54" font-size="11" fill="currentColor" font-family="monospace" opacity="0.7">STEP 1</text>
+          <text x="190" y="74" font-size="13" fill="currentColor" font-family="monospace">register on sight</text>
+          <text x="190" y="96" font-size="11.5" fill="currentColor" font-family="monospace" opacity="0.75">customers parts</text>
+          <text x="190" y="114" font-size="11.5" fill="currentColor" font-family="monospace" opacity="0.75">machines</text>
+          <text x="190" y="138" font-size="11.5" fill="currentColor" font-family="monospace" opacity="0.6">facilities tools materials</text>
+          <text x="190" y="152" font-size="11.5" fill="currentColor" font-family="monospace" opacity="0.6">badges: no table</text>
+
+          <!-- step 2 -->
+          <rect x="178" y="170" width="176" height="70" rx="6" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="190" y="190" font-size="11" fill="currentColor" font-family="monospace" opacity="0.7">STEP 2</text>
+          <text x="190" y="210" font-size="13" fill="currentColor" font-family="monospace">job row</text>
+          <text x="190" y="228" font-size="11.5" fill="currentColor" font-family="monospace" opacity="0.75">INSERT .. DO NOTHING</text>
+
+          <line x1="354" y1="146" x2="404" y2="146" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)"/>
+          <line x1="354" y1="205" x2="380" y2="205" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M 380 205 L 380 160 L 404 160" fill="none" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)"/>
+
+          <!-- step 3 gate -->
+          <rect x="406" y="92" width="216" height="110" rx="6" fill="none" class="acs" stroke-width="2"/>
+          <text x="420" y="112" font-size="11" class="act" font-family="monospace">STEP 3 . THE GATE</text>
+          <text x="420" y="136" font-size="13" fill="currentColor" font-family="monospace">INSERT INTO events</text>
+          <text x="420" y="160" font-size="12" fill="currentColor" font-family="monospace" opacity="0.8">ON CONFLICT (event_id)</text>
+          <text x="420" y="182" font-size="12" fill="currentColor" font-family="monospace" opacity="0.8">DO NOTHING</text>
+
+          <!-- branch: duplicate -->
+          <path d="M 514 202 L 514 266" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+          <text x="524" y="238" font-size="11.5" fill="currentColor" font-family="monospace" opacity="0.8">nothing inserted</text>
+          <rect x="386" y="268" width="256" height="46" rx="6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="5 4"/>
+          <text x="514" y="296" text-anchor="middle" font-size="12.5" fill="currentColor" font-family="monospace">duplicate id dropped, return false</text>
+
+          <!-- branch: applied -->
+          <line x1="622" y1="147" x2="672" y2="147" class="acs" stroke-width="2" marker-end="url(#ar-a)"/>
+          <text x="647" y="136" text-anchor="middle" font-size="11" class="act" font-family="monospace">FOUND</text>
+
+          <rect x="674" y="52" width="196" height="192" rx="6" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="688" y="72" font-size="11" fill="currentColor" font-family="monospace" opacity="0.7">STEP 4</text>
+          <text x="688" y="92" font-size="13" fill="currentColor" font-family="monospace">apply_event</text>
+          <text x="688" y="116" font-size="11.5" fill="currentColor" font-family="monospace" opacity="0.75">terms and totals</text>
+          <text x="688" y="132" font-size="11.5" fill="currentColor" font-family="monospace" opacity="0.75">assigned, not added</text>
+          <text x="688" y="154" font-size="11.5" fill="currentColor" font-family="monospace" opacity="0.75">milestones via</text>
+          <text x="688" y="170" font-size="11.5" fill="currentColor" font-family="monospace" opacity="0.75">LEAST / GREATEST</text>
+          <text x="688" y="192" font-size="11.5" fill="currentColor" font-family="monospace" opacity="0.75">counters += 1</text>
+          <text x="688" y="214" font-size="11.5" fill="currentColor" font-family="monospace" opacity="0.75">status fold</text>
+          <text x="688" y="236" font-size="11.5" fill="currentColor" font-family="monospace" opacity="0.6">also called by rebuild</text>
+
+          <text x="884" y="110" font-size="11.5" fill="currentColor" font-family="monospace" opacity="0.6">one</text>
+          <text x="884" y="126" font-size="11.5" fill="currentColor" font-family="monospace" opacity="0.6">transaction</text>
+          <path d="M 876 52 L 910 52 L 910 244 L 876 244" fill="none" stroke="currentColor" stroke-width="1" opacity="0.45"/>
+        </svg>
+        <figcaption>Step 1 is a set of create-on-sight inserts with nothing to double, so it runs ahead of the gate.
+          Everything that could double-count sits behind it: <span class="mono">apply_event</span> is reached only when
+          the ledger insert actually inserted, so a repeated <span class="mono">event_id</span> moves no counter, the
+          function returns false, and the loader logs what it dropped. That same function is what
+          <span class="mono">rebuild_jobs()</span> calls per stored event, which is why the projection can always be
+          thrown away and replayed.</figcaption>
+      </figure>
+    </section>
+
+    <section id="shape">
+      <div class="head"><h2>How the tables relate</h2><p>A ledger, three registries, one projection, and the function that rebuilds it.</p></div>
+      <figure>
+        <svg viewBox="0 0 980 400" role="img" aria-label="Three registry tables are created on sight and referenced by the jobs projection, while facilities, tools, materials and technician badges have no table and live as values on the events; the events ledger holds every field the feed sends and is the only source of truth; jobs is a maintained projection that rebuild_jobs restores by replaying the ledger. The users table is owned by the auth layer, writes nothing, and links to a technician badge.">
+          <defs>
+            <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+            </marker>
+            <marker id="ar2-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" class="acf"/>
+            </marker>
+          </defs>
+
+          <text x="16" y="26" font-size="11" fill="currentColor" font-family="monospace" opacity="0.7">REGISTRIES . ON SIGHT</text>
+          <rect x="14" y="38" width="230" height="242" rx="7" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
+          <rect x="30" y="62" width="198" height="30" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          <text x="42" y="82" font-size="12.5" fill="currentColor" font-family="monospace">customers</text>
+          <rect x="30" y="102" width="198" height="30" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          <text x="42" y="122" font-size="12.5" fill="currentColor" font-family="monospace">parts . material_id</text>
+          <rect x="30" y="142" width="198" height="30" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          <text x="42" y="162" font-size="12.5" fill="currentColor" font-family="monospace">machines . kind</text>
+          <text x="30" y="196" font-size="11" fill="currentColor" font-family="monospace" opacity="0.65">a table only where something</text>
+          <text x="30" y="210" font-size="11" fill="currentColor" font-family="monospace" opacity="0.65">hangs off the code</text>
+          <text x="30" y="238" font-size="11" fill="currentColor" font-family="monospace" opacity="0.5">facility, tool, material and</text>
+          <text x="30" y="252" font-size="11" fill="currentColor" font-family="monospace" opacity="0.5">badge stay values on events</text>
+
+          <text x="336" y="26" font-size="11" class="act" font-family="monospace">THE LEDGER</text>
+          <rect x="332" y="38" width="252" height="242" rx="7" fill="none" class="acs" stroke-width="2"/>
+          <text x="350" y="86" font-size="17" fill="currentColor" font-family="monospace">events</text>
+          <text x="350" y="116" font-size="12" fill="currentColor" font-family="monospace" opacity="0.8">append only</text>
+          <text x="350" y="138" font-size="12" fill="currentColor" font-family="monospace" opacity="0.8">PRIMARY KEY (event_id)</text>
+          <text x="350" y="160" font-size="12" fill="currentColor" font-family="monospace" opacity="0.8">no other constraint</text>
+          <text x="350" y="188" font-size="12" fill="currentColor" font-family="monospace" opacity="0.8">10 columns, one per</text>
+          <text x="350" y="205" font-size="12" fill="currentColor" font-family="monospace" opacity="0.8">field the feed sends</text>
+          <text x="350" y="227" font-size="12" fill="currentColor" font-family="monospace" opacity="0.8">metadata kept whole</text>
+          <text x="350" y="254" font-size="11" fill="currentColor" font-family="monospace" opacity="0.65">the only source of truth</text>
+
+          <path d="M 584 118 L 690 118" fill="none" class="acs" stroke-width="2" marker-end="url(#ar2-a)"/>
+          <text x="637" y="109" text-anchor="middle" font-size="11" class="act" font-family="monospace">projects</text>
+          <path d="M 690 172 L 584 172" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ar2)"/>
+          <text x="637" y="190" text-anchor="middle" font-size="11" fill="currentColor" font-family="monospace">rebuild_jobs()</text>
+
+          <text x="696" y="26" font-size="11" fill="currentColor" font-family="monospace" opacity="0.7">PROJECTION</text>
+          <rect x="692" y="38" width="274" height="242" rx="7" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="710" y="80" font-size="17" fill="currentColor" font-family="monospace">jobs</text>
+          <text x="710" y="108" font-size="12" fill="currentColor" font-family="monospace" opacity="0.8">29 columns, one row per job</text>
+          <text x="710" y="132" font-size="12" fill="currentColor" font-family="monospace" opacity="0.8">identity and stated terms</text>
+          <text x="710" y="152" font-size="12" fill="currentColor" font-family="monospace" opacity="0.8">milestones and counters</text>
+          <text x="710" y="172" font-size="12" fill="currentColor" font-family="monospace" opacity="0.8">status fold</text>
+          <text x="710" y="200" font-size="12" fill="currentColor" font-family="monospace" opacity="0.8">FK to every registry</text>
+          <text x="710" y="228" font-size="11" fill="currentColor" font-family="monospace" opacity="0.65">a second copy, on purpose:</text>
+          <text x="710" y="244" font-size="11" fill="currentColor" font-family="monospace" opacity="0.65">one row read per screen</text>
+          <text x="710" y="264" font-size="11" fill="currentColor" font-family="monospace" opacity="0.65">rebuild_jobs() restores it</text>
+
+          <path d="M 244 158 L 300 158 L 300 300 L 828 300 L 828 284" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.75" marker-end="url(#ar2)"/>
+          <text x="560" y="294" text-anchor="middle" font-size="11" fill="currentColor" font-family="monospace" opacity="0.8">FK</text>
+
+          <text x="16" y="326" font-size="11" fill="currentColor" font-family="monospace" opacity="0.7">OUTSIDE THE FEED</text>
+          <rect x="14" y="338" width="230" height="54" rx="7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="6 4"/>
+          <text x="32" y="362" font-size="13" fill="currentColor" font-family="monospace">users</text>
+          <text x="32" y="381" font-size="11" fill="currentColor" font-family="monospace" opacity="0.7">login only, no event writes it</text>
+          <text x="32" y="394" font-size="11" fill="currentColor" font-family="monospace" opacity="0.7">holds a badge code, unvalidated</text>
+        </svg>
+        <figcaption>Everything but <span class="mono">events</span> can be dropped and rebuilt: replay the ledger in
+          <span class="mono">occurred_at</span> order and the registries and the job rows come back identical.
+          <span class="mono">users</span> writes nothing, because the application is a viewer over the shop's feed; its
+          one link to the data is the badge a login belongs to.</figcaption>
+      </figure>
+    </section>
+
+    <section id="tables">
+      <div class="head"><h2>The ten tables</h2><p id="tablecount"></p></div>
+      <div class="prose" id="tablesIntro"></div>
+      <div id="tableCards" style="display:grid; gap:18px;"></div>
+    </section>
+
+    <section id="types">
+      <div class="head"><h2>Types and indexes</h2><p>The one enum, and what the read patterns need.</p></div>
+      <div class="prose" id="typesIntro"></div>
+      <div class="tcard"><pre><code id="enumSql"></code></pre></div>
+      <div class="tcard"><pre><code id="indexSql"></code></pre></div>
+    </section>
+
+    <section id="matrix">
+      <div class="head"><h2>What each event type writes</h2><p>Every one of the 14 types, and the rows it creates or updates.</p></div>
+      <div class="legend" id="legend"></div>
+      <div class="mx"><table id="mxTable"></table></div>
+      <div class="prose" id="mxNote"></div>
+    </section>
+
+    <section id="ingest">
+      <div class="head"><h2>The ingest function</h2><p>One event, one transaction, safe to run twice.</p></div>
+      <div class="tcard"><pre><code id="ingestSql"></code></pre></div>
+    </section>
+
+    <section id="replay">
+      <div class="head"><h2>Rebuilding the projection</h2><p>Why a stored counter is allowed to exist.</p></div>
+      <div class="prose" id="replayIntro"></div>
+      <div class="tcard"><pre><code id="replaySql"></code></pre></div>
+    </section>
+
+    <section id="dq">
+      <div class="head"><h2>What the sample got wrong, and where it lands</h2><p>Each finding from the profile, and the schema's answer.</p></div>
+      <div class="pairs" id="dqPairs"></div>
+      <div class="tcard"><pre><code id="dqSql"></code></pre></div>
+    </section>
+
+    <section id="questions">
+      <div class="head"><h2>Decisions</h2><p>What was chosen at each fork, what it rules out, and the one still open.</p></div>
+      <div class="qs" id="questions"></div>
+    </section>
+  </main>
+
+  <footer id="foot"></footer>
+</div>
+
+<script>
+const DATA = {"source":"data/manufacturing_events.jsonl","total_events":19519,"jobs":312,"customers":16,"parts":25,"materials":8,"machines":10,"tools":25,"technicians":36,"facilities":2,"facts":[["6","tables"],["48","columns"],["2","enum types"],["14","event types written"],["8","data quality views"],["3","functions"]],"column_count":48,"enum_count":2,"view_count":8,"func_count":3,"tables":[{"name":"events","kind":"ledger","kind_class":"ledger","rows_hint":"19,519 rows in 6 weeks","blurb":"One column per field the feed sends, and nothing else: no hash, no extracted copies of metadata keys, no generated flags. <span class='mono'>event_id</span> is the primary key and the only constraint on the table, so the ledger accepts whatever the shop reported, including the parts that are wrong. Meaning is imposed in the projection, where changing it costs a rebuild rather than a re-ingest.","writers":["every event type (insert)"],"ddl":"-- The append-only ledger, and the only source of truth. One column per\n-- field the feed actually sends, nothing derived, nothing duplicated:\n-- metadata stays whole rather than being copied out into columns.\n--\n-- event_id is the primary key. 19 ids arrive twice in the sample; the\n-- second copy is dropped at ingest (5 of those 19 differ in payload, so\n-- the drop is a decision, not a technicality: see process_event, which\n-- returns false so the loader can log what it discarded).\n--\n-- No constraints beyond the key. This table has to accept whatever the\n-- shop reported, including the parts that are wrong; the projections\n-- below are where meaning is imposed.\n--\n-- Two source fields are renamed: `timestamp` -> occurred_at (timestamp\n-- is a type name), `material` -> material_id (it is a code, not a mass).\nCREATE TABLE events (\n  event_id    text PRIMARY KEY,     -- 'evt_000001'\n  occurred_at timestamptz,          -- source `timestamp`, UTC\n  event_type  text,                 -- 14 values today; text, not enum\n  job_id      text,\n  part_id     text,\n  customer_id text,\n  material_id text,                 -- source `material`\n  machine_id  text,                 -- null on 704 events, kept null\n  quantity    integer,              -- meaning depends on event_type\n  metadata    jsonb                 -- 15 keys across the feed, kept whole\n);"},{"name":"jobs","kind":"projection","kind_class":"write","rows_hint":"312 rows, 29 columns","blurb":"Three kinds of column: identity the events repeat on every line, terms an event states once, and the milestones and counters the ingest accumulates. The third kind is knowingly a second copy of what the ledger says, bought so that a job list or a job page is one row read. <span class='mono'>rebuild_jobs()</span> is the receipt: empty the table, replay the ledger, compare. The facility, tool and operator sit here as plain codes, with no table behind them to validate against.","writers":["all 14 types"],"ddl":"-- The projection, maintained forward as events arrive. A row is created by\n-- whichever event mentions the job first, so ingest can start mid-stream.\n--\n-- Three kinds of column: what the events repeat on every line (identity),\n-- what an event states once (the order terms, the completion totals), and\n-- what the ingest accumulates (milestones, counters, resources). The third\n-- kind is a second copy of what the ledger already says, bought deliberately\n-- so a job list or a job page is one row read instead of an aggregate.\n--\n-- Two rules keep that copy from lying. Totals the event carries as a total\n-- (good_quantity, scrap_quantity) are ASSIGNED, never added, so job_0293's\n-- second completion cannot double them. Counters are only reached through\n-- apply_event, which process_event calls only when the ledger insert\n-- actually inserted, so a repeated event_id moves nothing.\n--\n-- Milestones use LEAST / GREATEST and resources use COALESCE, so those are\n-- order-independent; the counters and the status fold are not, which is why\n-- rebuild_jobs() replays in occurred_at order.\n--\n-- Deliberately absent: block_count, hold_count, completion_event_count, and\n-- generated yield_pct / days_late. Each is one arithmetic step from columns\n-- that are here, or one GROUP BY over events.\nCREATE TABLE jobs (\n  job_id                text        PRIMARY KEY,   -- 'job_0003'\n  customer_id           text        REFERENCES customers(customer_id),\n  part_id               text        REFERENCES parts(part_id),\n  material_id           text,                                          -- no materials table\n  facility_id           text,                                          -- la_01 | la_02\n  status                job_status  NOT NULL DEFAULT 'created',\n\n  -- stated once by job_created\n  priority              text,                      -- low | normal | high\n  target_quantity       integer,\n  target_due_at         timestamptz,\n  unit_price_estimate   numeric(10,2),             -- present on 150 of 312\n\n  -- stated once by job_completed, assigned and never accumulated\n  good_quantity         integer,\n  scrap_quantity        integer,\n\n  -- resources. Verified single-valued per job across all 312: no job runs on\n  -- more than one press, tool or operator, so first value wins. The material\n  -- lot is deliberately not here: 14 of 312 jobs carry one, 5 of those scans\n  -- land after the last cycle, and no lot is shared between jobs, so it stays\n  -- in the event's metadata until the feed can support traceability.\n  machine_id            text        REFERENCES machines(machine_id),   -- the press, from job_started\n  tool_id               text,                                          -- 25 codes, unvalidated\n  operator_id           text,                                          -- badge code, unvalidated\n\n  -- milestones, each set by its own event type, never moved backwards\n  created_event_at      timestamptz,\n  tool_ready_at         timestamptz,\n  started_at            timestamptz,\n  first_cycle_at        timestamptz,\n  last_cycle_at         timestamptz,\n  first_inspection_at   timestamptz,\n  last_inspection_at    timestamptz,\n  completed_at          timestamptz,\n  last_event_at         timestamptz,\n\n  -- counters, incremented once per applied event\n  cycle_count           integer     NOT NULL DEFAULT 0,\n  cycle_units           integer     NOT NULL DEFAULT 0,   -- press throughput, NOT order progress\n  inspection_pass_units integer     NOT NULL DEFAULT 0,\n  inspection_fail_units integer     NOT NULL DEFAULT 0,\n  event_count           integer     NOT NULL DEFAULT 0\n);"},{"name":"customers","kind":"registry","kind_class":"write","rows_hint":"16 rows","blurb":"Created on sight. Not facility-scoped: 15 of the 16 place work at both sites, which is why the customer sits on the job rather than on the part. Job counts and order value are a <span class='mono'>GROUP BY</span> over 312 rows, not columns here. It keeps a table where a facility does not because the application is organised around customers: they get a page, a list, and eventually a name.","writers":["every event type"],"ddl":"-- Created on sight from events.customer_id. 16 in the sample, and not\n-- facility-scoped: 15 of the 16 place work at both sites.\nCREATE TABLE customers (\n  customer_id text PRIMARY KEY                   -- 'cust_orbit'\n);"},{"name":"parts","kind":"registry","kind_class":"write","rows_hint":"25 rows","blurb":"The one registry with a column of its own. Across all 19,519 events a part maps to exactly one material, so <span class='mono'>material_id</span> is a stated fact about the part rather than about the event. There is no materials table to validate it against; <span class='mono'>dq_part_material_conflicts</span> is what catches a disagreement.","writers":["every event type"],"ddl":"-- Created on sight from events.part_id. 25 in the sample, and the only\n-- registry with a column of its own: across all 19,519 events a part maps\n-- to exactly one material, so material_id is a stated fact about the part.\n-- It is plain text with nothing to validate it against, since materials\n-- have no table; dq_part_material_conflicts is what catches a disagreement.\n-- Customer is not stable per part: every part is built for several, so that\n-- relationship lives on the job.\nCREATE TABLE parts (\n  part_id     text PRIMARY KEY,                  -- 'part_1020'\n  material_id text                               -- 8 codes in the feed, unvalidated\n);"},{"name":"machines","kind":"registry","kind_class":"write","rows_hint":"10 codes","blurb":"Created on sight, with <span class='mono'>kind</span> read off the prefix the first time a code appears: press_01..06, qc_01..02, tooling_01..02. That derived kind is why machines keep a table and tools do not. A code is one machine wherever it runs; all ten appear at both facilities, and if that turns out to mean per-site numbering, the facility on every event makes the split a rebuild rather than a reconstruction.","writers":["any event carrying machine_id"],"ddl":"-- Created on sight from events.machine_id: press_01..06, qc_01..02,\n-- tooling_01..02. kind is the code prefix, stamped once on first sight\n-- and never revisited. All ten codes appear under both facilities;\n-- the registry treats a code as one machine, and if the sites turn out\n-- to number their own equipment the split is a replay away, since every\n-- event carries its facility.\nCREATE TABLE machines (\n  machine_id text         PRIMARY KEY,           -- 'press_04'\n  kind       machine_kind NOT NULL               -- from the prefix, first sight only\n);"},{"name":"users","kind":"auth","kind_class":"auth","rows_hint":"seeded by auth","blurb":"The application is a viewer over the shop's feed: nothing here writes to <span class='mono'>events</span> or <span class='mono'>jobs</span>, and no other table references a user. <span class='mono'>technician_id</span> carries the badge code the feed names, so an operator's screens can be scoped to their own work. Nothing validates that code beyond uniqueness, so a typo is a login that matches no events.","writers":["none: auth layer only"],"ddl":"-- The only table an event never touches, and the only one whose columns do\n-- not come from the feed. The application is a viewer over the shop's data:\n-- nothing here writes to events or jobs, and no other table references a\n-- user. technician_id is the one bridge, carrying the badge code the feed\n-- names so an operator's screens can be scoped to their own work. There is\n-- no technicians table to point at, so nothing validates the code beyond\n-- uniqueness: a typo here is a login that matches no events.\nCREATE TABLE users (\n  user_id       bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  email         citext NOT NULL UNIQUE,\n  display_name  text,\n  technician_id text UNIQUE                      -- badge code, null for a planner\n);"}],"matrix_tables":["events","jobs","customers","parts","machines","users"],"matrix":[{"type":"cycle_completed","n":12965,"cells":[{"k":"ins"},{"k":"ups"},{"k":"ups"},{"k":"ups"},{"k":"cond","label":"99%"},{"k":"none"}],"effect":"<code>cycle_count += 1</code>, <code>cycle_units += quantity</code>, <code>first/last_cycle_at</code>; status to <code>in_progress</code>"},{"type":"inspection_passed","n":2765,"cells":[{"k":"ins"},{"k":"ups"},{"k":"ups"},{"k":"ups"},{"k":"cond","label":"99%"},{"k":"none"}],"effect":"<code>inspection_pass_units += quantity</code>, <code>first/last_inspection_at</code>"},{"type":"inspection_failed","n":2388,"cells":[{"k":"ins"},{"k":"ups"},{"k":"ups"},{"k":"ups"},{"k":"cond","label":"99%"},{"k":"none"}],"effect":"<code>inspection_fail_units += quantity</code>, <code>first/last_inspection_at</code>; the defect code stays in the event's metadata, indexed"},{"type":"job_created","n":312,"cells":[{"k":"ins"},{"k":"ups"},{"k":"ups"},{"k":"ups"},{"k":"none"},{"k":"none"}],"effect":"fills the terms it states: <code>priority, target_quantity, target_due_at, unit_price_estimate</code>, plus <code>created_event_at</code>. Status stays <code>created</code>"},{"type":"tool_ready","n":302,"cells":[{"k":"ins"},{"k":"ups"},{"k":"ups"},{"k":"ups"},{"k":"cond","label":"99%"},{"k":"none"}],"effect":"<code>tool_ready_at</code> and the job's <code>tool_id</code>; status <code>created</code> to <code>tooling_ready</code>"},{"type":"job_started","n":302,"cells":[{"k":"ins"},{"k":"ups"},{"k":"ups"},{"k":"ups"},{"k":"cond","label":"99%"},{"k":"none"}],"effect":"<code>started_at</code>, the press into <code>machine_id</code>, the badge into <code>operator_id</code>; status to <code>in_progress</code>"},{"type":"job_completed","n":282,"cells":[{"k":"ins"},{"k":"ups"},{"k":"ups"},{"k":"ups"},{"k":"cond","label":"44%"},{"k":"none"}],"effect":"assigns <code>good_quantity</code> and <code>scrap_quantity</code> as stated, sets <code>completed_at</code>; status to <code>completed</code>"},{"type":"job_blocked","n":68,"cells":[{"k":"ins"},{"k":"ups"},{"k":"ups"},{"k":"ups"},{"k":"cond","label":"81%"},{"k":"none"}],"effect":"status to <code>blocked</code>. The cause stays in metadata; <code>dq_open_blocks</code> counts blocks against unblocks"},{"type":"job_unblocked","n":59,"cells":[{"k":"ins"},{"k":"ups"},{"k":"ups"},{"k":"ups"},{"k":"cond","label":"51%"},{"k":"none"}],"effect":"status back to <code>in_progress</code>"},{"type":"shift_handoff","n":17,"cells":[{"k":"ins"},{"k":"ups"},{"k":"ups"},{"k":"ups"},{"k":"cond","label":"59%"},{"k":"none"}],"effect":"<code>event_count</code> and <code>last_event_at</code> only. The row exists so the boundary is on the timeline"},{"type":"maintenance_ping","n":16,"cells":[{"k":"ins"},{"k":"ups"},{"k":"ups"},{"k":"ups"},{"k":"cond","label":"31%"},{"k":"none"}],"effect":"<code>event_count</code> and <code>last_event_at</code>; registers the machine when one is named"},{"type":"sensor_glitch","n":16,"cells":[{"k":"ins"},{"k":"ups"},{"k":"ups"},{"k":"ups"},{"k":"cond","label":"50%"},{"k":"none"}],"effect":"<code>event_count</code> and <code>last_event_at</code>. The signal stays on the event for machine-level analysis"},{"type":"material_lot_scan","n":14,"cells":[{"k":"ins"},{"k":"ups"},{"k":"ups"},{"k":"ups"},{"k":"cond","label":"43%"},{"k":"none"}],"effect":"<code>event_count</code> and <code>last_event_at</code>. The lot id stays in metadata by choice"},{"type":"job_hold","n":13,"cells":[{"k":"ins"},{"k":"ups"},{"k":"ups"},{"k":"ups"},{"k":"cond","label":"62%"},{"k":"none"}],"effect":"status to <code>on_hold</code>, which the next production event clears. All 13 holds resolve that way within 7.4 hours"}],"rules":[{"title":"The ledger is the only truth","body":"<span class='mono'>events</span> is the only table nothing can be derived from. Everything else is a projection: <span class='mono'>TRUNCATE jobs</span>, call <span class='mono'>rebuild_jobs()</span>, and the 29 columns come back identical. A bug in the aggregation is a re-run, not a data loss.","from":"from: 19,519 events that already say everything"},{"title":"No constraint but the key","body":"The ledger has no NOT NULL, no CHECK, no foreign keys. Nothing about a row's content can reject it, so a new defect code or a shifted metadata shape lands in the table instead of a dead-letter queue.","from":"from: 15 metadata keys whose contract differs per event type"},{"title":"event_id is the key","body":"Duplicates are dropped at the door: <span class='mono'>ON CONFLICT (event_id) DO NOTHING</span>, and <span class='mono'>process_event</span> returns false so the loader logs what it discarded.","from":"from: 19 ids that arrive twice, 5 of them disagreeing"},{"title":"The projection is a second copy, on purpose","body":"<span class='mono'>jobs</span> stores the milestones and counters the ledger could compute, because a job list and a job page read one row rather than an aggregate. <span class='mono'>rebuild_jobs()</span> is what makes that copy safe to keep: it can always be proven against the events.","from":"from: screens that read a job at a time"},{"title":"Counters live behind the gate","body":"<span class='mono'>apply_event</span> is reached only when the ledger insert actually inserted, and totals the event carries as a total are assigned rather than added. Nothing that could double-count runs unless the event was genuinely new.","from":"from: job_0293, completed twice with the same 241/26 split"},{"title":"A table only where something hangs off the code","body":"Customers, parts and machines get one: the business is organised around customers, a part states its material, a machine code states its kind. Facilities, tools, materials and badges are values on the events, listed with a <span class='mono'>DISTINCT</span> and given a table the day they carry more.","from":"from: 2 facilities and 25 tool codes that arrive as bare strings"},{"title":"Nulls are recorded, not repaired","body":"A missing machine or inspector stays null and shows up in a standing data quality view. Inferring the attribution at ingest would destroy the only evidence that the floor has a reporting gap.","from":"from: 704 events with no machine, 27% of inspections with no inspector"}],"dq":[["19 <span class='mono'>event_id</span> values arrive twice. 14 pairs are byte-identical; the other 5 differ in exactly one field, <span class='mono'>quantity</span>, always by 1, always a <span class='mono'>cycle_completed</span> repeated on the next line.","<span class='mono'>event_id</span> is the primary key, so the second arrival inserts nothing and <span class='mono'>process_event</span> returns false. Cross-referencing cannot settle which value is right: on all 4 of those jobs that completed, inspected units, good+scrap and target_quantity are the same number, and cycle units overshoot it by 85 to 238. Net stake, 3 units in 126,168."],["job_0293 emitted <span class='mono'>job_completed</span> twice, so a naive sum reads 534 units delivered against a 267-unit order.","<span class='mono'>good_quantity</span> and <span class='mono'>scrap_quantity</span> are assigned from the event, never added, and <span class='mono'>apply_event</span> runs only behind the dedupe gate. <span class='mono'>dq_double_completions</span> counts the completion events per job and names it."],["<span class='mono'>quantity</span> means three different things: a batch on cycles, the whole order on created and completed, and a constant 0 on nine marker types.","It stays raw and unmapped on the event; the job splits it into <span class='mono'>cycle_units</span>, <span class='mono'>inspection_pass_units</span>, <span class='mono'>inspection_fail_units</span> and <span class='mono'>target_quantity</span>. Nothing sums a column whose meaning shifts, and <span class='mono'>dq_overproduction</span> shows what the split reveals: cycles run 1.00 to 1.60 times the order, median 1.48."],["Blocks, not holds, are what never close. 68 <span class='mono'>job_blocked</span> against 59 <span class='mono'>job_unblocked</span> leaves 9 jobs blocked at the end of the feed, none completed, silent 7 to 37 days. Three of the nine kept cycling afterwards, so their status reads <span class='mono'>in_progress</span>.","<span class='mono'>dq_open_blocks</span> compares the count of blocks against the count of unblocks per job rather than trusting status, which is the only test that finds those three. All 13 holds, by contrast, are followed by production within 7.4 hours, so the status fold clears them without help."],["704 events carry a null <span class='mono'>machine_id</span>, including 98 press cycles and 49 inspections. 27% of inspections name no inspector.","The column is nullable and nothing fills it in. <span class='mono'>dq_unattributed_events</span> reports the gap by type. Inferring the machine from the job would launder a reporting failure into data."],["1,072 of 12,965 cycles sit exactly on 1,860 seconds: the value is clipped, not measured.","No stored flag. The ceiling is a predicate in <span class='mono'>dq_censored_cycles</span>, so the day it moves you change one view instead of backfilling a generated column."],["Metadata keys differ per event type, and the shop vocabularies could grow at any time: 6 defect codes, 5 block causes plus their 5 <span class='mono'>resolved_</span> mirrors, 3 signals, 3 priorities.","<span class='mono'>metadata</span> stays whole and unconstrained, queryable through a GIN index plus expression indexes on the keys that get filtered. <span class='mono'>dq_vocabulary</span> is the standing watch, and with four tables cut it is also the list: facilities, tools, materials and badges are rows in that view now."],["10 jobs were created and never started, 21 started and never completed. The stream just stops.","Nothing forces a terminal status. <span class='mono'>dq_stalled_jobs</span> ranks open jobs by silence off <span class='mono'>jobs.last_event_at</span>, which is the report the plant actually wants."],["All 10 machine codes, 12 of 25 tool codes and 27 of 36 badges appear under both facilities, and <span class='mono'>la_02</span> carries only 1,533 of the 19,519 events.","<span class='mono'>machines</span> is keyed on the code alone, so a code is one machine. Every event still carries its facility, so if the sites turn out to number their own equipment, the split is a key change plus <span class='mono'>rebuild_jobs()</span>."],["<span class='mono'>unit_price_estimate</span> is present on only 150 of 312 jobs, so any revenue total silently omits half the work.","No stored revenue column. Value is price times quantity in the query, reported next to the count of jobs that had a price at all, so a half-complete number cannot be read as a full one."]],"questions":[{"q":"What happens to a repeated event_id whose payload changed?","tag":"still open","body":"All 5 conflicting pairs differ only in <span class='mono'>quantity</span>, by exactly 1, on a <span class='mono'>cycle_completed</span> repeated on the very next line with an identical timestamp. Nothing distinguishes a correction from producer noise, and no downstream total reconciles against a cycle quantity, so the data cannot decide it. The rule matters because it also governs the next conflict.","rec":"keep the first, log the drop. Candidates if that stops being good enough: keep the last as a restatement, or <span class='mono'>LEAST(quantity)</span> for a result that is the same under any replay order."},{"q":"Which codes deserve a table?","body":"The first draft gave every code one: facilities, customers, materials, parts, machines, tools, technicians. Six of those held nothing but the code itself, which is a join that answers no question the ledger could not.","rec":"six tables. A code earns a table where something hangs off it: customers as a first-class business entity, parts because a part states its material, machines because a code states its kind. The other four are values on the events, and <span class='mono'>dq_vocabulary</span> lists them."},{"q":"How much should the ledger refuse?","body":"Foreign keys would never fire, because <span class='mono'>process_event</span> creates every registry row first, and NOT NULL would hold today on all nine fields that are never null. Both would start rejecting the day the producer changes.","rec":"primary key only. The ledger records what arrived; a malformed row is visible in a view rather than absent from the table."},{"q":"Should jobs.status be stored or folded at read time?","body":"Status is the one value a query cannot reach with a min, max or sum: it is the fold of a job's whole history. Stored, it makes a status-sectioned job list an index scan.","rec":"stored, with the assumption named: correctness needs events applied in <span class='mono'>occurred_at</span> order, which holds for all 312 jobs here, and <span class='mono'>rebuild_jobs()</span> replays in that order."},{"q":"Milestones and counters: columns or a view?","body":"As a view they cannot drift; as columns they are one row read per screen. The earlier draft had them as <span class='mono'>job_rollup</span>, and every job page paid for an aggregate.","rec":"columns on <span class='mono'>jobs</span>, maintained by <span class='mono'>apply_event</span>. The view is gone; <span class='mono'>rebuild_jobs()</span> is the repair path and the proof."},{"q":"Is a machine code global or per facility?","body":"All 10 machine codes, half the tool codes and 27 of 36 badges appear at both sites, while <span class='mono'>la_02</span> carries only 1,533 of 19,519 events. A badge meaning two different people per site is the least likely reading.","rec":"one row per code. The facility stays on every event, so a per-site split later is a key change and a rebuild, not a reconstruction."},{"q":"Machine kind: stored or derived?","body":"It is unambiguous from the code prefix across all 10 machines, and it is the one fact that makes machines worth a table now that tools do not have one.","rec":"stamped on the registry row at first sight, as a <span class='mono'>machine_kind</span> enum."},{"q":"What can a person write?","body":"Nothing in the feed closes the 9 stale blocks, and an ERP normally lets someone triage them. Recording that would mean either manual events on the ledger or a separate actions table.","rec":"nothing, for now. The application is a viewer; <span class='mono'>users</span> is a login, and its only link to the data is the badge code it carries."},{"q":"Should the hot metadata keys become columns?","body":"<span class='mono'>cycle_time_seconds</span> rides on 12,965 events, <span class='mono'>tool_id</span> on 13,713, <span class='mono'>inspector_id</span> on 3,762, <span class='mono'>defect_code</span> on 2,388. As generated columns they would be typed and named; as jsonb they stay one shape.","rec":"metadata stays whole. A GIN index plus expression indexes on the filtered keys make the reads as fast without the second copy."},{"q":"Should defect codes, block reasons and signals be constrained?","body":"They are closed sets today, but they are shop vocabulary, and shop vocabulary grows without a migration to announce it.","rec":"text, watched by <span class='mono'>dq_vocabulary</span>. A seventh defect code is a row in a report, not a failed batch."},{"q":"What happens when a 15th event type appears?","body":"<span class='mono'>apply_event</span> has no branch for an unknown type, so the event lands and moves only <span class='mono'>event_count</span> and <span class='mono'>last_event_at</span>.","rec":"let it land quietly. <span class='mono'>dq_vocabulary</span> lists it the next time anyone looks, and no batch stops because the feed grew."},{"q":"How far should material lots be modelled?","body":"14 scans, 14 distinct lots, none shared between two jobs, every scan carrying quantity 0, and 5 of them landing after the last cycle was pressed. A lot that touches one job is not yet a lot.","rec":"no column and no table. The lot id stays in the event's metadata until the feed carries a lot's material and dates."},{"q":"Do the remaining registries get master-data columns now?","body":"A site name and timezone would change how existing data reads, since every timestamp is UTC and a shift boundary is a local-time fact. Neither is in the feed, and facilities no longer have a table to hold them.","rec":"nothing until something supplies the values. Adding a column, or a table, is a small migration the day an import exists; a null column nobody fills is a permanent lie in the schema."},{"q":"Should customers, parts and machines carry counters too?","body":"The same argument that put counters on <span class='mono'>jobs</span> could put them here. The difference is how they are read: 16 customers and 25 parts are always read as a list.","rec":"aggregate at query time. A <span class='mono'>GROUP BY</span> over 312 job rows is instant and cannot drift."},{"q":"How is money handled at 48% coverage?","body":"150 of 312 jobs carry a <span class='mono'>unit_price_estimate</span>, running 12 to 478 with a median of 213, which times the order is a median of about 56,000 a job.","rec":"computed in the query, never stored, and always reported next to the count of priced jobs."},{"q":"When does this need partitioning?","tag":"default taken","body":"19,519 events per six weeks is roughly 170,000 a year. Partitioning at that size costs more in complexity than it returns, and <span class='mono'>rebuild_jobs()</span> is a single-digit-second loop.","rec":"one table, revisited past roughly 50 million rows, then RANGE partitioned on <span class='mono'>occurred_at</span>, with the rebuild done per facility or job range."}],"types_intro":"<p>Two enums, neither a vocabulary the shop controls. <span class='mono'>job_status</span> is our own fold of the stream; <span class='mono'>machine_kind</span> is read off the code prefix and stamped on a registry row once. Everything the floor names stays <span class='mono'>text</span>, <span class='mono'>event_type</span> included, so a fifteenth event type or a seventh defect code lands instead of failing. The two expression indexes stand in for the metadata columns this schema does not store: filtering on a defect code or a tool is as fast as a column would have been, without the copy.</p>","replay_intro":"<p><span class='mono'>jobs</span> carries 18 values the ledger could compute. That copy is only defensible if it can be proven, which is what this function is for: empty the table, replay every stored event through the same <span class='mono'>apply_event</span> the live path uses, in <span class='mono'>occurred_at</span> order because the counters and the status fold depend on order. Run it after changing anything in the projection logic, or against a scratch copy to check that the live table still agrees with the events. The ledger is never touched.</p>","sections":{"ingest":"-- Two functions, because the projection has to be reachable twice: once per\n-- arriving event, and once per stored event when jobs is rebuilt.\n--\n--   apply_event   the projection, and the only thing that moves a counter\n--   process_event registries, then the ledger insert, then apply_event\n--\n-- The ledger insert is the dedupe gate. A repeated event_id inserts nothing,\n-- FOUND is false, apply_event is never called and the function returns false\n-- so the loader can log the drop.\nCREATE FUNCTION apply_event(p events) RETURNS void\nLANGUAGE plpgsql AS $$\nBEGIN\n  INSERT INTO jobs (job_id, customer_id, part_id, material_id, facility_id)\n  VALUES (p.job_id, p.customer_id, p.part_id, p.material_id, p.metadata ->> 'facility')\n  ON CONFLICT (job_id) DO NOTHING;\n\n  UPDATE jobs j SET\n    -- terms, stated once\n    priority            = CASE WHEN p.event_type = 'job_created' THEN p.metadata ->> 'priority' ELSE j.priority END,\n    target_quantity     = CASE WHEN p.event_type = 'job_created' THEN (p.metadata ->> 'target_quantity')::int ELSE j.target_quantity END,\n    target_due_at       = CASE WHEN p.event_type = 'job_created' THEN (p.metadata ->> 'target_due_at')::timestamptz ELSE j.target_due_at END,\n    unit_price_estimate = CASE WHEN p.event_type = 'job_created' THEN (p.metadata ->> 'unit_price_estimate')::numeric ELSE j.unit_price_estimate END,\n\n    -- totals, assigned so a replayed completion cannot double them\n    good_quantity  = CASE WHEN p.event_type = 'job_completed' THEN (p.metadata ->> 'good_quantity')::int  ELSE j.good_quantity END,\n    scrap_quantity = CASE WHEN p.event_type = 'job_completed' THEN (p.metadata ->> 'scrap_quantity')::int ELSE j.scrap_quantity END,\n\n    -- resources, first value wins\n    machine_id        = CASE WHEN p.event_type = 'job_started' THEN COALESCE(j.machine_id, p.machine_id) ELSE j.machine_id END,\n    tool_id           = COALESCE(j.tool_id, p.metadata ->> 'tool_id'),\n    operator_id       = COALESCE(j.operator_id, p.metadata ->> 'operator_id'),\n\n    -- milestones. LEAST and GREATEST ignore nulls, so the first event of a\n    -- type sets the stamp and a later or backfilled one cannot rewind it.\n    created_event_at    = CASE WHEN p.event_type = 'job_created'     THEN LEAST(j.created_event_at, p.occurred_at)    ELSE j.created_event_at END,\n    tool_ready_at       = CASE WHEN p.event_type = 'tool_ready'      THEN LEAST(j.tool_ready_at, p.occurred_at)       ELSE j.tool_ready_at END,\n    started_at          = CASE WHEN p.event_type = 'job_started'     THEN LEAST(j.started_at, p.occurred_at)          ELSE j.started_at END,\n    first_cycle_at      = CASE WHEN p.event_type = 'cycle_completed' THEN LEAST(j.first_cycle_at, p.occurred_at)      ELSE j.first_cycle_at END,\n    last_cycle_at       = CASE WHEN p.event_type = 'cycle_completed' THEN GREATEST(j.last_cycle_at, p.occurred_at)    ELSE j.last_cycle_at END,\n    first_inspection_at = CASE WHEN p.event_type IN ('inspection_passed','inspection_failed') THEN LEAST(j.first_inspection_at, p.occurred_at)   ELSE j.first_inspection_at END,\n    last_inspection_at  = CASE WHEN p.event_type IN ('inspection_passed','inspection_failed') THEN GREATEST(j.last_inspection_at, p.occurred_at) ELSE j.last_inspection_at END,\n    completed_at        = CASE WHEN p.event_type = 'job_completed'   THEN LEAST(j.completed_at, p.occurred_at)        ELSE j.completed_at END,\n    last_event_at       = GREATEST(j.last_event_at, p.occurred_at),\n\n    -- counters. Each event is applied exactly once, so these accumulate.\n    cycle_count           = j.cycle_count + (p.event_type = 'cycle_completed')::int,\n    cycle_units           = j.cycle_units           + CASE WHEN p.event_type = 'cycle_completed'   THEN COALESCE(p.quantity, 0) ELSE 0 END,\n    inspection_pass_units = j.inspection_pass_units + CASE WHEN p.event_type = 'inspection_passed' THEN COALESCE(p.quantity, 0) ELSE 0 END,\n    inspection_fail_units = j.inspection_fail_units + CASE WHEN p.event_type = 'inspection_failed' THEN COALESCE(p.quantity, 0) ELSE 0 END,\n    event_count           = j.event_count + 1,\n\n    status = CASE\n      WHEN p.event_type = 'job_completed' THEN 'completed'::job_status\n      WHEN j.status = 'completed'         THEN j.status         -- terminal wins over late strays\n      WHEN p.event_type = 'job_hold'      THEN 'on_hold'\n      WHEN p.event_type = 'job_blocked'   THEN 'blocked'\n      WHEN p.event_type IN ('job_started', 'job_unblocked', 'cycle_completed',\n                            'inspection_passed', 'inspection_failed') THEN 'in_progress'\n      WHEN p.event_type = 'tool_ready' AND j.status = 'created' THEN 'tooling_ready'\n      ELSE j.status END\n  WHERE j.job_id = p.job_id;\nEND $$;\n\nCREATE FUNCTION process_event(p_raw jsonb) RETURNS boolean\nLANGUAGE plpgsql AS $$\nDECLARE\n  v_md    jsonb := COALESCE(p_raw -> 'metadata', '{}'::jsonb);\n  v_event events;\nBEGIN\n  -- 1. reference rows, created the first time an event names them\n  INSERT INTO customers  (customer_id) VALUES (p_raw ->> 'customer_id')  ON CONFLICT DO NOTHING;\n  INSERT INTO parts (part_id, material_id)\n    VALUES (p_raw ->> 'part_id', p_raw ->> 'material')\n    ON CONFLICT DO NOTHING;   -- a later disagreement is a finding, not an overwrite\n\n  INSERT INTO machines (machine_id, kind)\n    SELECT p_raw ->> 'machine_id',\n           split_part(p_raw ->> 'machine_id', '_', 1)::machine_kind\n    WHERE p_raw ->> 'machine_id' IS NOT NULL\n    ON CONFLICT DO NOTHING;\n\n  -- 2. the ledger insert IS the dedupe gate\n  INSERT INTO events (event_id, occurred_at, event_type, job_id, part_id,\n                      customer_id, material_id, machine_id, quantity, metadata)\n  VALUES (p_raw ->> 'event_id', (p_raw ->> 'timestamp')::timestamptz, p_raw ->> 'event_type',\n          p_raw ->> 'job_id', p_raw ->> 'part_id', p_raw ->> 'customer_id',\n          p_raw ->> 'material', p_raw ->> 'machine_id',\n          (p_raw ->> 'quantity')::int, v_md)\n  ON CONFLICT (event_id) DO NOTHING\n  RETURNING * INTO v_event;\n\n  IF NOT FOUND THEN\n    RETURN false;          -- duplicate id: dropped before any counter moves\n  END IF;\n\n  -- 3. the projection\n  PERFORM apply_event(v_event);\n  RETURN true;\nEND $$;","dq":"-- Every anomaly the profile found gets a standing query, not a cleanup.\nCREATE VIEW dq_double_completions AS          -- job_0293 in the sample\n  SELECT e.job_id, count(*) AS completion_events,\n         j.good_quantity, j.scrap_quantity, j.target_quantity\n  FROM events e JOIN jobs j USING (job_id)\n  WHERE e.event_type = 'job_completed'\n  GROUP BY e.job_id, j.good_quantity, j.scrap_quantity, j.target_quantity\n  HAVING count(*) > 1;\n\nCREATE VIEW dq_unattributed_events AS         -- 704 events with no machine\n  SELECT event_type,\n         count(*) FILTER (WHERE machine_id IS NULL) AS no_machine,\n         count(*) FILTER (WHERE NOT metadata ? 'inspector_id'\n                          AND event_type IN ('inspection_passed','inspection_failed')) AS no_inspector,\n         count(*) AS total\n  FROM events GROUP BY 1 ORDER BY 2 DESC;\n\nCREATE VIEW dq_censored_cycles AS             -- 1,072 cycles pinned at the 1,860 s ceiling\n  SELECT machine_id,\n         count(*) FILTER (WHERE (metadata ->> 'cycle_time_seconds')::int >= 1860) AS at_ceiling,\n         count(*) AS cycles\n  FROM events WHERE event_type = 'cycle_completed' GROUP BY 1;\n\nCREATE VIEW dq_part_material_conflicts AS     -- none in the sample; guards parts.material_id\n  SELECT e.part_id, p.material_id AS part_material, e.material_id AS event_material, count(*)\n  FROM events e JOIN parts p USING (part_id)\n  WHERE e.material_id <> p.material_id GROUP BY 1, 2, 3;\n\nCREATE VIEW dq_stalled_jobs AS                -- 10 never started, 21 started and never finished\n  SELECT job_id, status, last_event_at, target_due_at,\n         now() - last_event_at AS silent_for\n  FROM jobs\n  WHERE completed_at IS NULL AND last_event_at < now() - interval '3 days';\n\n-- Holds are not the leak: all 13 in the sample are followed by production\n-- within 0.1 to 7.4 hours, so the status fold clears them on its own.\n-- Blocks are. 68 job_blocked against 59 job_unblocked leaves 9 jobs blocked\n-- at the end of the feed, none completed, silent 7 to 37 days. Three of the\n-- nine kept cycling after the block, so status alone does not find them:\n-- the test has to be the count of blocks against the count of unblocks.\nCREATE VIEW dq_open_blocks AS\n  SELECT j.job_id, j.status, j.last_event_at,\n         count(*) FILTER (WHERE e.event_type = 'job_blocked')   AS blocks,\n         count(*) FILTER (WHERE e.event_type = 'job_unblocked') AS unblocks,\n         max(e.occurred_at) FILTER (WHERE e.event_type = 'job_blocked') AS last_blocked_at\n  FROM jobs j JOIN events e USING (job_id)\n  WHERE j.completed_at IS NULL\n  GROUP BY j.job_id, j.status, j.last_event_at\n  HAVING count(*) FILTER (WHERE e.event_type = 'job_blocked')\n       > count(*) FILTER (WHERE e.event_type = 'job_unblocked');\n\n-- The shop vocabularies are text, so nothing rejects a new code. This is\n-- the standing watch instead: 6 defect codes, 5 block causes and their 5\n-- resolved_ mirrors, 3 signals, 3 priorities as of this sample. A value\n-- that appears here for the first time is a conversation, not an outage.\nCREATE VIEW dq_vocabulary AS\n  SELECT 'defect_code' AS key, metadata ->> 'defect_code' AS value, count(*) AS events\n  FROM events WHERE metadata ? 'defect_code' GROUP BY 2\n  UNION ALL\n  SELECT 'reason', metadata ->> 'reason', count(*)\n  FROM events WHERE metadata ? 'reason' GROUP BY 2\n  UNION ALL\n  SELECT 'signal', metadata ->> 'signal', count(*)\n  FROM events WHERE metadata ? 'signal' GROUP BY 2\n  UNION ALL\n  SELECT 'event_type', event_type, count(*)\n  FROM events GROUP BY 2\n  UNION ALL\n  SELECT 'priority', priority, count(*)\n  FROM jobs WHERE priority IS NOT NULL GROUP BY 2\n  UNION ALL   -- the vocabularies with no table of their own\n  SELECT 'material', material_id, count(*)\n  FROM events GROUP BY 2\n  UNION ALL\n  SELECT 'facility', metadata ->> 'facility', count(*)\n  FROM events GROUP BY 2\n  UNION ALL\n  SELECT 'tool', metadata ->> 'tool_id', count(*)\n  FROM events WHERE metadata ? 'tool_id' GROUP BY 2\n  UNION ALL   -- 24 operators, 12 inspectors\n  SELECT 'operator', metadata ->> 'operator_id', count(*)\n  FROM events WHERE metadata ? 'operator_id' GROUP BY 2\n  UNION ALL\n  SELECT 'inspector', metadata ->> 'inspector_id', count(*)\n  FROM events WHERE metadata ? 'inspector_id' GROUP BY 2;\n\nCREATE VIEW dq_overproduction AS              -- cycles run 1.00 to 1.60 x the order, median 1.48\n  SELECT job_id, target_quantity, cycle_units,\n         inspection_pass_units + inspection_fail_units AS inspected_units,\n         round(cycle_units::numeric / NULLIF(target_quantity, 0), 2) AS cycles_per_ordered_unit\n  FROM jobs WHERE target_quantity IS NOT NULL AND cycle_units > target_quantity;","enums":"-- One enum, and it is not a vocabulary from the feed: job_status is our\n-- own six-state fold of the event stream. Everything the shop names\n-- (event types, defect codes, block reasons, signals, priorities) stays\n-- text, so a new code on the floor never rejects a row.\nCREATE TYPE job_status AS ENUM ('created', 'tooling_ready', 'in_progress',\n                                'blocked', 'on_hold', 'completed');\n\n-- One closed set read off the code prefix, stamped on the registry row the\n-- first time a code appears. Unambiguous across all 10 machine codes.\nCREATE TYPE machine_kind AS ENUM ('press', 'qc', 'tooling');","indexes":"-- Sized for 19.5k events per 6 weeks (~170k/year). No partitioning yet:\n-- revisit past roughly 50M rows, then RANGE partition events on\n-- occurred_at. The two expression indexes stand in for the columns this\n-- schema deliberately does not store.\nCREATE INDEX events_job_time_idx   ON events (job_id, occurred_at);\nCREATE INDEX events_type_time_idx  ON events (event_type, occurred_at DESC);\nCREATE INDEX events_time_idx       ON events (occurred_at DESC);\nCREATE INDEX events_machine_idx    ON events (machine_id, occurred_at DESC) WHERE machine_id IS NOT NULL;\nCREATE INDEX events_metadata_gin   ON events USING gin (metadata jsonb_path_ops);\nCREATE INDEX events_defect_idx     ON events ((metadata ->> 'defect_code'), occurred_at DESC)\n                                    WHERE metadata ? 'defect_code';\nCREATE INDEX events_tool_idx       ON events ((metadata ->> 'tool_id'), occurred_at DESC)\n                                    WHERE metadata ? 'tool_id';\n\nCREATE INDEX jobs_status_idx       ON jobs (facility_id, status);   -- facility is text now\nCREATE INDEX jobs_customer_idx     ON jobs (customer_id, created_event_at DESC);\nCREATE INDEX jobs_open_due_idx     ON jobs (target_due_at) WHERE completed_at IS NULL;\nCREATE INDEX jobs_silent_idx       ON jobs (last_event_at) WHERE completed_at IS NULL;\nCREATE INDEX jobs_machine_idx      ON jobs (machine_id) WHERE machine_id IS NOT NULL;","replay":"-- The repair path, and the reason stored counters are safe to keep. The\n-- ledger is untouched: jobs is emptied and rebuilt from it, in occurred_at\n-- order because the counters and the status fold depend on order. Run it\n-- after changing anything in apply_event, or to prove the projection still\n-- agrees with the events.\n--\n-- 19,519 events is a single-digit-second rebuild. Past a few million, replay\n-- per facility or per job range rather than whole-table.\nCREATE FUNCTION rebuild_jobs() RETURNS bigint\nLANGUAGE plpgsql AS $$\nDECLARE\n  r events;\n  n bigint := 0;\nBEGIN\n  TRUNCATE jobs;                       -- nothing references jobs\n  FOR r IN SELECT * FROM events ORDER BY occurred_at, event_id LOOP\n    PERFORM apply_event(r);\n    n := n + 1;\n  END LOOP;\n  RETURN n;\nEND $$;"}};
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt = n => Number(n).toLocaleString('en-US');
+
+/* ---- tiny SQL highlighter ---- */
+const KW = ['CREATE','TABLE','TYPE','VIEW','INDEX','EXTENSION','FUNCTION','RETURNS','LANGUAGE','DECLARE',
+  'BEGIN','END','IF','THEN','ELSE','ELSIF','CASE','WHEN','INSERT','INTO','VALUES','ON','CONFLICT','DO',
+  'UPDATE','SET','SELECT','FROM','WHERE','GROUP','BY','ORDER','HAVING','JOIN','USING','AND','OR','NOT',
+  'NULL','DEFAULT','PRIMARY','KEY','FOREIGN','REFERENCES','UNIQUE','CHECK','CONSTRAINT','ALTER','ADD',
+  'GENERATED','ALWAYS','AS','IDENTITY','STORED','DEFERRABLE','INITIALLY','DEFERRED','RETURNING','DISTINCT',
+  'FILTER','COALESCE','GREATEST','LEAST','INTERVAL','ARRAY','IS','IN','NOTHING','ENUM','WITH','EXISTS',
+  'DESC','ASC','RETURN','QUERY','NOW','COUNT','ROUND','EXTRACT','UNNEST','SPLIT_PART','DIGEST','GIN'];
+const TY = ['text','bigint','integer','smallint','timestamptz','jsonb','numeric','boolean','bytea','citext',
+  'date','job_status','machine_kind'];
+const sqlRe = new RegExp(
+  "(--[^\\n]*)|('(?:[^']|'')*')|\\b(" + KW.join('|') + ")\\b|\\b(" + TY.join('|') + ")\\b|\\b(\\d+(?:\\.\\d+)?)\\b", 'g');
+function sql(src) {
+  return esc(src).replace(sqlRe, (m, c, s, k, t, n) =>
+    c ? `<span class="sql-c">${c}</span>` :
+    s ? `<span class="sql-s">${s}</span>` :
+    k ? `<span class="sql-k">${k}</span>` :
+    t ? `<span class="sql-t">${t}</span>` :
+        `<span class="sql-n">${n}</span>`);
+}
+
+document.getElementById('src').textContent = DATA.source;
+
+/* ---- summary band ---- */
+document.getElementById('facts').innerHTML = DATA.facts.map(([v, k]) =>
+  `<div><div class="v">${esc(v)}</div><div class="k lbl">${esc(k)}</div></div>`).join('');
+
+/* ---- principles ---- */
+document.getElementById('rules').innerHTML = DATA.rules.map((r, i) => `
+  <div class="rule">
+    <span class="n">${String(i + 1).padStart(2, '0')}</span>
+    <h3>${esc(r.title)}</h3>
+    <p>${r.body}</p>
+    <div class="from">${r.from}</div>
+  </div>`).join('');
+
+/* ---- table cards ---- */
+document.getElementById('tablecount').textContent =
+  `${DATA.tables.length} tables, ${DATA.column_count} columns, ${DATA.enum_count} enum type` +
+  `${DATA.enum_count === 1 ? '' : 's'}, ${DATA.view_count} views.`;
+document.getElementById('tablesIntro').innerHTML =
+  `<p>Each card carries the DDL as it appears in <span class="mono">designs/schema.sql</span>, the file this page is
+   generated from, so the two cannot drift. The chips under each name are the event types that write the table.</p>`;
+
+document.getElementById('tableCards').innerHTML = DATA.tables.map(t => `
+  <article class="tcard" id="t-${esc(t.name)}">
+    <div class="tcard-head">
+      <div class="tcard-title">
+        <span class="tname">${esc(t.name)}</span>
+        <span class="tag ${t.kind_class}">${esc(t.kind)}</span>
+        <span class="lbl">${esc(t.rows_hint)}</span>
+      </div>
+      <p>${t.blurb}</p>
+      <div class="writers"><span class="lbl">Written by</span>${t.writers.map(w =>
+        `<span class="w">${esc(w)}</span>`).join('')}</div>
+    </div>
+    <pre><code>${sql(t.ddl)}</code></pre>
+  </article>`).join('');
+
+/* ---- event write matrix ---- */
+const TABLES = DATA.matrix_tables;
+document.getElementById('legend').innerHTML = [
+  ['ins', 'insert'], ['ups', 'upsert'], ['upd', 'update'], ['cond', 'only when the key is present'], ['none', 'untouched'],
+].map(([c, t]) => `<span><span class="mk ${c}">${c === 'none' ? '.' : c === 'cond' ? '?' : c}</span> ${t}</span>`).join('');
+
+document.getElementById('mxTable').innerHTML =
+  `<thead><tr><th>event_type</th><th class="n">in feed</th>${
+    TABLES.map(t => `<th>${esc(t)}</th>`).join('')}<th>effect on jobs</th></tr></thead>
+   <tbody>${DATA.matrix.map(r => `<tr>
+     <td class="et">${esc(r.type)}</td>
+     <td class="n">${fmt(r.n)}</td>
+     ${r.cells.map(c => `<td class="cell">${
+        c.k === 'none' ? '<span class="mk none">.</span>'
+        : `<span class="mk ${c.k}">${c.k === 'cond' ? esc(c.label || '?') : c.k}</span>`}</td>`).join('')}
+     <td class="eff">${r.effect}</td>
+   </tr>`).join('')}</tbody>`;
+
+document.getElementById('mxNote').innerHTML =
+  `<p><span class="mono">customers</span> and <span class="mono">parts</span> are touched by every event, because every
+   record carries both. <span class="mono">machines</span> is the only conditional column left, and the percentages are
+   the real fill rate in the sample: a machine is named on 96.4% of the feed overall, but on none of the 312
+   <span class="mono">job_created</span> events and on only 44% of completions. The keys that used to have columns here,
+   <span class="mono">tool_id</span> on 99.4% of cycles and <span class="mono">inspector_id</span> on 73% of inspections,
+   now live in <span class="mono">metadata</span> and are read through the expression indexes.</p>`;
+
+/* ---- SQL sections ---- */
+document.getElementById('enumSql').innerHTML = sql(DATA.sections.enums);
+document.getElementById('indexSql').innerHTML = sql(DATA.sections.indexes);
+document.getElementById('typesIntro').innerHTML = DATA.types_intro;
+document.getElementById('ingestSql').innerHTML = sql(DATA.sections.ingest);
+document.getElementById('dqSql').innerHTML = sql(DATA.sections.dq);
+document.getElementById('replaySql').innerHTML = sql(DATA.sections.replay);
+document.getElementById('replayIntro').innerHTML = DATA.replay_intro;
+
+/* ---- data quality pairs ---- */
+document.getElementById('dqPairs').innerHTML = DATA.dq.map(([f, r]) =>
+  `<div class="pair"><div class="f"><b>in the sample</b>${f}</div><div class="r"><b>schema answer</b>${r}</div></div>`).join('');
+
+/* ---- open questions ---- */
+document.getElementById('questions').innerHTML = DATA.questions.map(q => `
+  <div class="q"><h3>${esc(q.q)}</h3><p>${q.body}</p>
+    <div class="rec"><b>${q.tag || 'decided'}</b> ${q.rec}</div></div>`).join('');
+
+/* ---- nav ---- */
+const NAV = [
+  ['approach', 'The approach'], ['writepath', 'Write path'], ['shape', 'Table relationships'],
+];
+document.getElementById('nav').innerHTML =
+  NAV.map(([id, t]) => `<a href="#${id}">${t}</a>`).join('') +
+  `<div class="lbl grp">Tables</div>` +
+  DATA.tables.map(t => `<a href="#t-${t.name}">${t.name}</a>`).join('') +
+  `<div class="lbl grp">Behaviour</div>` +
+  [['types', 'Types and indexes'], ['matrix', 'Event write matrix'], ['ingest', 'Ingest function'],
+   ['replay', 'Rebuilding jobs'], ['dq', 'Data quality'], ['questions', 'Open questions']]
+    .map(([id, t]) => `<a href="#${id}">${t}</a>`).join('');
+
+const links = [...document.querySelectorAll('.nav a')];
+const targets = links.map(a => document.getElementById(a.getAttribute('href').slice(1))).filter(Boolean);
+if ('IntersectionObserver' in window) {
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (!e.isIntersecting) return;
+      links.forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + e.target.id));
+    });
+  }, { rootMargin: '-10% 0px -80% 0px' });
+  targets.forEach(t => io.observe(t));
+}
+
+document.getElementById('foot').innerHTML =
+  `Schema derived from ${fmt(DATA.total_events)} events in <span class="mono">${esc(DATA.source)}</span>, ` +
+  `covering ${DATA.jobs} jobs, ${DATA.customers} customers, ${DATA.parts} parts, ${DATA.materials} materials, ` +
+  `${DATA.machines} machine codes, ${DATA.tools} tool codes and ${DATA.technicians} technician badges across ` +
+  `${DATA.facilities} facilities. The executable DDL is <span class="mono">designs/schema.sql</span>; this page is generated from it.`;
+</script>

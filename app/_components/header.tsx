@@ -5,8 +5,10 @@ const NAV = [
   { id: "customers", label: "Customers" },
 ];
 
+import { signOut } from "@/app/actions";
+
 // Only Home is built, so the other three render in place but do not navigate.
-export default function Header({ current, feedEnd }: { current: string; feedEnd: string }) {
+export default function Header({ current, feedEnd, userName }: { current: string; feedEnd: string; userName: string }) {
   return (
     <header
       className="nav"
@@ -42,6 +44,19 @@ export default function Header({ current, feedEnd }: { current: string; feedEnd:
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         <span className="tag tag-neutral" style={{ letterSpacing: ".08em" }}>Read only</span>
         <span style={{ fontSize: 12, color: "color-mix(in srgb, var(--color-text) 55%, transparent)" }}>Feed to {feedEnd}</span>
+        <span style={{ width: 1, height: 20, background: "var(--color-divider)", display: "block" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--color-accent-700)" }} aria-hidden="true">
+            <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+          <span style={{ fontSize: 13 }}>{userName}</span>
+        </div>
+        <form action={signOut}>
+          <button className="btn btn-ghost" type="submit" style={{ fontSize: 12, letterSpacing: ".06em", textTransform: "uppercase" }}>
+            Sign out
+          </button>
+        </form>
       </div>
     </header>
   );

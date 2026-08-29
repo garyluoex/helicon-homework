@@ -1,5 +1,7 @@
+import { cookies } from "next/headers";
 import Header from "@/app/_components/header";
 import { one, query } from "@/lib/db";
+import { COOKIE_NAME, verify } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +32,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
   // event rather than from now.
   const from = `(select max(occurred_at) from events) - make_interval(days => $1::int)`;
 
-  const [k, jobRows, equipRows] = await Promise.all([
+  // Middleware already rejected an invalid cookie; this reads who it belongs to.
+  const userId = await verify((await cookies()).get(COOKIE_NAME)?.value);
+
+  const [k, jobRows, equipRows, user] = await Promise.all([
     one<Kpis>(
       `select to_char(max(occurred_at), 'YYYY-MM-DD') as feed_end,
               to_char(greatest(min(occurred_at), ${from}), 'YYYY-MM-DD') as window_start,
@@ -78,6 +83,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
               floor(extract(epoch from (feed.hi - max(e.occurred_at))) / 86400)::text as silent
        from events e, feed where e.event_type = 'sensor_glitch'
        group by 1, feed.hi order by max(e.occurred_at) limit 8`),
+
+    one<{ display_name: string | null; email: string }>(
+      "select display_name, email from users where user_id = $1", [userId]),
   ]);
 
   const inspected = Number(k.pass_units) + Number(k.fail_units);
@@ -93,7 +101,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      <Header current="home" feedEnd={k.feed_end} />
+      <Header current="home" feedEnd={k.feed_end} userName={user?.display_name ?? user?.email ?? "Signed in"} />
       <main style={{ flex: 1, padding: "32px 28px 72px", maxWidth: 1560, width: "100%", margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: 24 }}>
           <h2 style={{ margin: 0 }}>Factory overview</h2>

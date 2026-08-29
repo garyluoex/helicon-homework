@@ -49,6 +49,22 @@ npm run db:schema                               # runs scripts/schema.sql, print
 npm run db:load                                 # loads the event feed, ~10s
 ```
 
+### Signing in
+
+The console is gated by one shared credential, not per-user auth. Two env vars
+back it, both already set in Vercel and pulled into `.env.local`:
+
+| Variable | What it is |
+|---|---|
+| `APP_PASSWORD` | the shared password the login form checks |
+| `SESSION_SECRET` | 32 random bytes, signs the session cookie |
+
+Sign in with any email in `public.users` (today that is `admin@helicon.local`)
+plus that password. Success sets an HMAC-signed, httpOnly, `SameSite=Lax` cookie
+for 7 days; `middleware.ts` redirects everything else to `/login`. Nothing stores
+a per-user credential. `lib/session.ts` says so at the top, and the empty
+`neon_auth` schema Neon provisioned is where a real provider would go.
+
 `db:schema` connects on `DATABASE_URL_UNPOOLED`, the direct connection rather than
 the pooler, because it is DDL. It expects an empty database: the file is plain
 `CREATE`, not `CREATE IF NOT EXISTS`, so a second run fails on the first object
@@ -183,8 +199,9 @@ per anomaly found in the data.
 
 ### Pages
 
-- **Login**
-- **Home** - key metrics across factory operations, plus a list of events needing attention
+- **Login** - built
+- **Home** - built. Four KPIs over a selectable window, plus "Needs attention":
+  jobs with more blocks than unblocks, and sensor glitches grouped by machine
 - **Jobs** - list sectioned by created, in progress and completed, each line a job with key metadata, plus per-section metrics
 - **Job** - key metadata and metrics for one job
 - **Customers** - customers with their parts and revenue
@@ -241,7 +258,7 @@ stays as the guard for a job that really does complete twice under two ids.
 
 ## Next
 
-- Pages, starting with the jobs list
+- The Jobs tab. Its nav item renders already, greyed out and inert
 
 ## Deliverables
 
@@ -249,6 +266,7 @@ stays as the guard for a job that really does complete twice under two ids.
 |---|---|
 | `scripts/schema.sql` | The schema, executable |
 | `scripts/load-events.mjs` | Loads the event feed into the database |
+| `app/globals.css` | The Industry design system, ported from the design |
 | `designs/schema_proposal.html` | Schema writeup and decision log |
 | `designs/manufacturing_events_profile.html` | Every field, its distinct values and their frequencies |
 | `designs/job_histories.html` | Full event timeline for ten representative jobs |

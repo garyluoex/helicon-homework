@@ -51,7 +51,11 @@ npm run db:schema                               # runs scripts/schema.sql, print
 `db:schema` connects on `DATABASE_URL_UNPOOLED`, the direct connection rather than
 the pooler, because it is DDL. It expects an empty database: the file is plain
 `CREATE`, not `CREATE IF NOT EXISTS`, so a second run fails on the first object
-that already exists. To start over, drop and recreate the public schema.
+that already exists. To start over:
+
+```sql
+drop schema public cascade; create schema public;
+```
 
 ## Data
 

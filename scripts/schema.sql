@@ -14,7 +14,8 @@
 -- Six tables, kept to the core. A code gets a table only where something
 -- hangs off it: customers because the business is organised around them,
 -- parts because a part states its material, machines because a location and
--- a code together name a physical unit, and the code states its kind. Facilities, tools, materials and technician badges are values
+-- a code together name a physical unit whose kind the code states.
+-- Facilities, tools, materials and technician badges are values
 -- the events carry, listed with a DISTINCT over the ledger when a screen
 -- needs them and given a table the day they carry more than a code.
 -- Target: PostgreSQL 14+.
@@ -39,8 +40,9 @@ CREATE TYPE machine_kind AS ENUM ('press', 'qc', 'tooling');
 -- ---------------------------------------------------------------------
 -- @table events
 -- The append-only ledger, and the only source of truth. One column per
--- field the feed actually sends, nothing derived, nothing duplicated:
--- metadata stays whole rather than being copied out into columns.
+-- field the feed actually sends, nothing derived: metadata stays whole
+-- rather than being unpacked into columns, with the one exception noted
+-- below.
 --
 -- event_id is the primary key. 19 ids arrive twice in the sample. A repeat
 -- carrying the same payload changes nothing; a repeat carrying a different

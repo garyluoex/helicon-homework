@@ -44,7 +44,7 @@ tg = {r["where_at"]: r for r in truth["home_state_rows"]}
 db_g = {r["where_at"]: r for r in db["home_state_rows"]}
 check("Home / equipment", "row count", len(tg), len(db_g))
 for m in sorted(tg):
-    for f in ("state", "problem", "when_at", "silent_days"):
+    for f in ("facility_id", "machine_id", "state", "problem", "when_at", "silent_days"):
         check("Home / equipment", f"{m}.{f}", tg[m][f], db_g.get(m, {}).get(f))
 
 # jobs

@@ -399,6 +399,7 @@ def main():
     # Home lists every unit the fold does not call operational, worst first.
     out["home_state_rows"] = [
         {"where_at": f'{r["machine_id"]} · {r["facility_id"]}',
+         "facility_id": r["facility_id"], "machine_id": r["machine_id"],
          "state": r["state"],
          "problem": "machine_fault" if r["state"] == "non_operational" else r["signal"],
          "when_at": r["last_event_at"],

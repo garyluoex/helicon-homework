@@ -106,10 +106,15 @@ for r in hb[1:]:
           [r[0], t["cause"] or "unstated cause", t["where_at"], t["when_at"], str(t["silent_days"])], r)
 tg = {r["where_at"]: r for r in truth["home_state_rows"]}
 check("Home / equipment", "row count", len(tg), len(hg) - 1)
+home_html = page("home.html")
 for r in hg[1:]:
     t = tg[r[0]]
     check("Home / equipment", f"{r[0]} row",
           [r[0], STATE_LABEL[t["state"]], t["problem"], t["when_at"], str(t["silent_days"])], r)
+    # A flagged unit is a link to its own page, the only equipment link on Home.
+    unit = f'/equipment/{t["facility_id"]}/{t["machine_id"]}'
+    check("Home / equipment", f"{r[0]} link", unit,
+          unit if f'href="{unit}"' in home_html else "(not linked)")
 
 # ---------------- Jobs -------------------------------------------------
 TAB_FILE = {"in-progress": "jobs_inprogress.html", "pending": "jobs_pending.html",

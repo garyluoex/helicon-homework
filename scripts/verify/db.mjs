@@ -64,7 +64,8 @@ out.home_open_block_rows = await q(`
 
 out.home_state_rows = await q(`
   with feed as (select max(occurred_at) as hi from events)
-  select s.machine_id || ' · ' || s.facility_id as where_at,
+  select s.facility_id, s.machine_id,
+         s.machine_id || ' · ' || s.facility_id as where_at,
          s.state,
          case when s.state = 'non_operational' then 'machine_fault'
               else s.last_job_signals end as problem,

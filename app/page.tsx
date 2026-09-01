@@ -22,7 +22,12 @@ type Kpis = {
   open_blocks: string; glitch_events: string; units: string; flagged_units: string;
 };
 type JobRow = { job_id: string; cause: string | null; where_at: string; when_at: string; silent_days: string };
-type EquipRow = { where_at: string; state: string; problem: string; when_at: string; silent_days: string };
+// The pair comes back beside the label so the row can open the unit's page;
+// where_at is only how the design writes that pair out.
+type EquipRow = {
+  facility_id: string; machine_id: string; where_at: string;
+  state: string; problem: string; when_at: string; silent_days: string;
+};
 
 const n = (v: string | number | null) =>
   v === null ? "—" : Number(v).toLocaleString("en-US");
@@ -99,7 +104,8 @@ export default async function Home({
     query<EquipRow>(
       `with feed as (select max(occurred_at) as hi from events)
        select * from (
-         select s.machine_id || ' · ' || s.facility_id as where_at,
+         select s.facility_id, s.machine_id,
+                s.machine_id || ' · ' || s.facility_id as where_at,
                 s.state, s.state_rank,
                 case when s.state = 'non_operational' then 'machine_fault'
                      else s.last_job_signals end as problem,
@@ -244,9 +250,10 @@ export default async function Home({
                 <tbody>
                   {equipRows.map((r) => {
                     const state = MACHINE_STATE[r.state] ?? MACHINE_STATE.operational;
+                    const unit = `/equipment/${r.facility_id}/${r.machine_id}`;
                     return (
-                      <tr key={r.where_at}>
-                        <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.where_at}</td>
+                      <ClickRow key={unit} href={unit}>
+                        <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={unit}>{r.where_at}</a></td>
                         <td>
                           <span className="tag" style={{ background: state.bg, color: state.ink }}>
                             {state.label}
@@ -255,7 +262,7 @@ export default async function Home({
                         <td>{r.problem}</td>
                         <td style={numeric}>{r.when_at}</td>
                         <td style={numeric}>{r.silent_days}</td>
-                      </tr>
+                      </ClickRow>
                     );
                   })}
                 </tbody>

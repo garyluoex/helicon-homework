@@ -41,8 +41,8 @@ for (const days of [7, 30, 42]) {
               group by 1 having count(*) filter (where event_type = 'job_blocked')
                          > count(*) filter (where event_type = 'job_unblocked')) b)::int as open_blocks,
            (select count(*) from events where event_type = 'sensor_glitch')::int as glitch_events,
-           (select count(distinct coalesce(machine_id, 'press unassigned'))
-            from events where event_type = 'sensor_glitch')::int as glitch_machines
+           (select count(distinct (facility_id, coalesce(machine_id, 'press unassigned')))
+            from events where event_type = 'sensor_glitch')::int as glitch_units
     from events`, [days]);
 }
 
@@ -64,7 +64,7 @@ out.home_open_block_rows = await q(`
 
 out.home_glitch_rows = await q(`
   with feed as (select max(occurred_at) as hi from events)
-  select coalesce(e.machine_id, 'press unassigned') as where_at,
+  select coalesce(e.machine_id, 'press unassigned') || ' · ' || e.facility_id as where_at,
          string_agg(distinct e.metadata ->> 'signal', ', ') as signals,
          count(*)::int as alerts,
          to_char(max(e.occurred_at), 'YYYY-MM-DD') as when_at,
@@ -149,19 +149,22 @@ const METRIC = {
 out.equipment_rows = [];
 for (const [kind, metric] of Object.entries(METRIC)) {
   const rows = await q(`
-    select m.machine_id, m.kind::text as kind,
+    select m.facility_id, m.machine_id, m.kind::text as kind,
            count(e.event_id)::int as events,
            count(*) filter (where e.event_type = 'sensor_glitch')::int as glitches,
-           ${metric}::int as metric,
-           count(distinct e.metadata ->> 'facility')::int as facilities
-    from machines m left join events e using (machine_id)
-    where m.kind = $1::machine_kind group by m.machine_id order by m.machine_id`, [kind]);
+           ${metric}::int as metric
+    from machines m
+      left join events e on e.facility_id = m.facility_id and e.machine_id = m.machine_id
+    where m.kind = $1::machine_kind
+    group by m.facility_id, m.machine_id
+    order by m.facility_id, m.machine_id`, [kind]);
   out.equipment_rows.push(...rows);
 }
 out.equipment_kpis = await one(`
-  select (select count(*) from machines)::int as machines,
-         (select count(*) from (select machine_id from events where machine_id is not null
-            group by 1 having count(distinct metadata ->> 'facility') = 2) x)::int as both_sites`);
+  select count(*)::int                    as units,
+         count(distinct machine_id)::int  as codes,
+         count(distinct facility_id)::int as locations
+  from machines`);
 
 // ---- job detail (app/jobs/[jobId]/page.tsx) --------------------------
 out.job_detail = {};

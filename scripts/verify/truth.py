@@ -22,6 +22,11 @@ def ts(s):
     return datetime.fromisoformat(s.replace("Z", "+00:00")) if s else None
 
 
+def fac(e):
+    """The event's location. Half the identity of the machine it names."""
+    return (e.get("metadata") or {}).get("facility")
+
+
 def load():
     """Raw lines, deduplicated last-wins, in the replay order rebuild_jobs uses."""
     by_id, order, dupes = {}, [], defaultdict(int)
@@ -152,7 +157,9 @@ def main():
     lo = min(e["_at"] for e in events)
 
     # ---- feed shape ------------------------------------------------------
-    machines = {e["machine_id"] for e in events if e["machine_id"]}
+    # A physical unit is location + machine code: the same code exists at
+    # both sites and names two different machines.
+    machines = {(fac(e), e["machine_id"]) for e in events if e["machine_id"]}
     out["feed"] = {
         "raw_lines": raw_lines,
         "repeated_event_ids": len(repeated),
@@ -197,7 +204,7 @@ def main():
             "fail_units": sum(e["quantity"] or 0 for e in inr if e["event_type"] == "inspection_failed"),
             "open_blocks": sum(1 for v in blocked.values() if v > 0),
             "glitch_events": len(glitches),
-            "glitch_machines": len({e["machine_id"] or "press unassigned" for e in glitches}),
+            "glitch_units": len({(fac(e), e["machine_id"] or "press unassigned") for e in glitches}),
         }
     out["home"] = blocks
 
@@ -224,7 +231,7 @@ def main():
     g = defaultdict(list)
     for e in events:
         if e["event_type"] == "sensor_glitch":
-            g[e["machine_id"] or "press unassigned"].append(e)
+            g[f'{e["machine_id"] or "press unassigned"} · {fac(e)}'].append(e)
     for where, es in sorted(g.items()):
         out["home_glitch_rows"].append({
             "where_at": where,
@@ -325,23 +332,23 @@ def main():
 
     # ---- equipment -------------------------------------------------------
     erows = []
-    for m in sorted(machines):
-        es = [e for e in events if e["machine_id"] == m]
+    for facility, m in sorted(machines):
+        es = [e for e in events if e["machine_id"] == m and fac(e) == facility]
         kind = m.split("_")[0]
         metric = (len({e["job_id"] for e in es if e["event_type"] == "job_started"}) if kind == "press"
                   else sum(e["quantity"] or 0 for e in es
                            if e["event_type"] in ("inspection_passed", "inspection_failed")) if kind == "qc"
                   else sum(1 for e in es if e["event_type"] == "tool_ready"))
         erows.append({
-            "machine_id": m, "kind": kind, "events": len(es),
+            "facility_id": facility, "machine_id": m, "kind": kind, "events": len(es),
             "glitches": sum(1 for e in es if e["event_type"] == "sensor_glitch"),
             "metric": metric,
-            "facilities": len({(e.get("metadata") or {}).get("facility") for e in es}),
         })
     out["equipment_rows"] = erows
     out["equipment_kpis"] = {
-        "machines": len(machines),
-        "both_sites": sum(1 for r in erows if r["facilities"] == 2),
+        "units": len(machines),
+        "codes": len({m for _, m in machines}),
+        "locations": len({f for f, _ in machines}),
     }
 
     # ---- a sample of job detail pages ------------------------------------

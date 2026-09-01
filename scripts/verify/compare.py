@@ -77,11 +77,13 @@ for r in truth["part_rows"]:
 # equipment
 for k, v in truth["equipment_kpis"].items():
     check("Equipment / KPIs", k, v, db["equipment_kpis"].get(k))
-de = {r["machine_id"]: r for r in db["equipment_rows"]}
+# Keyed on the unit, since a machine code alone names two machines.
+de = {(r["facility_id"], r["machine_id"]): r for r in db["equipment_rows"]}
 check("Equipment / rows", "row count", len(truth["equipment_rows"]), len(de))
 for r in truth["equipment_rows"]:
-    for f in ("kind", "events", "glitches", "metric", "facilities"):
-        check("Equipment / rows", f"{r['machine_id']}.{f}", r[f], de.get(r["machine_id"], {}).get(f))
+    unit = (r["facility_id"], r["machine_id"])
+    for f in ("kind", "events", "glitches", "metric"):
+        check("Equipment / rows", f"{unit[0]}/{unit[1]}.{f}", r[f], de.get(unit, {}).get(f))
 
 # job detail
 for jid, t in truth["job_detail"].items():

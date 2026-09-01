@@ -25,7 +25,9 @@ const GROUPS = {
 type GroupKey = keyof typeof GROUPS;
 const GLITCHES = "count(*) filter (where e.event_type = 'sensor_glitch')";
 
-type Row = { machine_id: string; events: string; glitches: string; metric: string };
+// A row is a physical unit, not a machine code: the sites number their own
+// equipment, so press_01 exists once at each location and reports separately.
+type Row = { facility_id: string; machine_id: string; events: string; glitches: string; metric: string };
 
 export default async function EquipmentPage({
   searchParams,
@@ -35,30 +37,32 @@ export default async function EquipmentPage({
   const g = GROUPS[tab];
 
   const spec: SortSpec = {
-    machine_id: "m.machine_id", health: GLITCHES, events: "count(e.event_id)",
-    metric: g.metric, glitches: GLITCHES,
+    location: "m.facility_id", machine_id: "m.machine_id", health: GLITCHES,
+    events: "count(e.event_id)", metric: g.metric, glitches: GLITCHES,
   };
-  const sort = orderBy(spec, sp.sort, sp.dir, "machine_id");
+  const sort = orderBy(spec, sp.sort, sp.dir, "location");
 
   const [top, k, rows] = await Promise.all([
     chrome(),
-    one<{ machines: string; both_sites: string }>(
-      `select (select count(*) from machines)::text as machines,
-              (select count(*) from (select machine_id from events where machine_id is not null
-                 group by 1 having count(distinct metadata ->> 'facility') = 2) x)::text as both_sites`),
+    one<{ units: string; codes: string; locations: string }>(
+      `select count(*)::text                     as units,
+              count(distinct machine_id)::text   as codes,
+              count(distinct facility_id)::text  as locations
+       from machines`),
     query<Row>(
-      `select m.machine_id,
+      `select m.facility_id, m.machine_id,
               count(e.event_id)::text as events,
               ${GLITCHES}::text       as glitches,
               ${g.metric}::text       as metric
-       from machines m left join events e using (machine_id)
+       from machines m
+         left join events e on e.facility_id = m.facility_id and e.machine_id = m.machine_id
        where m.kind = $1
-       group by m.machine_id
-       order by ${sort.sql} nulls last, m.machine_id`, [g.kind]),
+       group by m.facility_id, m.machine_id
+       order by ${sort.sql} nulls last, m.facility_id, m.machine_id`, [g.kind]),
   ]);
 
   const cols: Column[] = [
-    { key: "machine_id", label: "Machine" }, { key: "health", label: "Health" },
+    { key: "location", label: "Location" }, { key: "machine_id", label: "Machine" }, { key: "health", label: "Health" },
     { key: "events", label: "Events", num: true }, { key: "metric", label: g.metricHead, num: true },
     { key: "glitches", label: "Glitches", num: true },
   ];
@@ -73,7 +77,8 @@ export default async function EquipmentPage({
         <div style={{ display: "flex", alignItems: "baseline", gap: 16, marginBottom: 24 }}>
           <h2 style={{ margin: 0 }}>Equipment</h2>
           <span style={{ fontSize: 13, color: "color-mix(in srgb, var(--color-text) 55%, transparent)" }}>
-            {num(k.machines)} machine codes, {Number(k.both_sites) === Number(k.machines) ? "each" : `${num(k.both_sites)}`} seen under both facilities. Kind is read off the code prefix.
+            Location + machine identifies a physical unit. {num(k.codes)} machine codes across{" "}
+            {num(k.locations)} locations, {num(k.units)} units in all; kind is read off the code prefix.
           </span>
         </div>
 
@@ -98,7 +103,8 @@ export default async function EquipmentPage({
                   {rows.map((r) => {
                     const unhealthy = Number(r.glitches) > 1;
                     return (
-                      <tr key={r.machine_id}>
+                      <tr key={`${r.facility_id}/${r.machine_id}`}>
+                        <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.facility_id}</td>
                         <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.machine_id}</td>
                         <td>
                           <span className="tag" style={{

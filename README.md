@@ -19,6 +19,7 @@ Refer to `designs/manufacturing_events_profile.html` and `designs/job_histories.
 | `timestamp` | File order matches timestamp order, globally and within all 312 jobs. Nothing in the future. 297 timestamps are shared by more than one event, and 32 of those collisions are inside a single job, so replay needs a tie-break (`occurred_at, event_id`) |
 | `job_id` | A job never changes its `part_id`, `customer_id`, `material` or facility. All four are safe on the job |
 | `machine_id` | Null on 704 events: all 312 `job_created`, 158 completions, 98 cycles, 49 inspections. Present on 96.4% overall |
+| `machine_id` + `facility` | **Not unique on its own.** All 10 codes appear at both `la_01` and `la_02`, so the sites number their own equipment: 20 physical units, not 10. Location + machine is the key. Every event carries a facility, and all 312 jobs stay at one site, so no job's press straddles the two |
 | `material` | A part maps to exactly one material across all 19,519 events |
 
 ## The event_id problem
@@ -71,7 +72,7 @@ Refer to schema design in `designs/schema_proposal.html`.
 | Customer | `/customers/[id]` | one account's stats, its parts and its jobs |
 | Parts | `/parts` | 25 parts with scrap rate and median cycle gap |
 | Part | `/parts/[id]` | one part's stats, real defect codes, and its jobs |
-| Equipment | `/equipment` | presses, inspection stations and tooling cells, with health from glitch counts |
+| Equipment | `/equipment` | presses, inspection stations and tooling cells, one row per physical unit (location + machine), with health from glitch counts |
 
 ### Job alerts (Future Idea)
 

@@ -3,6 +3,9 @@
 -- Derived from data/manufacturing_events.jsonl (19,519 events, 42 days).
 --
 -- Scope rule: a column exists only where the feed supplies the value.
+-- The one field lifted out of an event's metadata is `facility`, because a
+-- machine code is only unique within a site: location is half the identity
+-- of a physical unit, not an attribute of an event.
 -- `jobs` additionally carries the rollups the application reads on every
 -- screen, maintained by the ingest and rebuildable from the ledger with
 -- rebuild_jobs(). Every table is written by the event ingest except
@@ -10,8 +13,8 @@
 --
 -- Six tables, kept to the core. A code gets a table only where something
 -- hangs off it: customers because the business is organised around them,
--- parts because a part states its material, machines because a code states
--- its kind. Facilities, tools, materials and technician badges are values
+-- parts because a part states its material, machines because a location and
+-- a code together name a physical unit, and the code states its kind. Facilities, tools, materials and technician badges are values
 -- the events carry, listed with a DISTINCT over the ledger when a screen
 -- needs them and given a table the day they carry more than a code.
 -- Target: PostgreSQL 14+.
@@ -53,6 +56,11 @@ CREATE TYPE machine_kind AS ENUM ('press', 'qc', 'tooling');
 --
 -- Two source fields are renamed: `timestamp` -> occurred_at (timestamp
 -- is a type name), `material` -> material_id (it is a code, not a mass).
+--
+-- One field is copied out of metadata rather than only read through it:
+-- facility_id. Every one of the 19,519 events carries it, and it is half
+-- the key of the machine the event names, so an equipment query joins on
+-- it on the hot path. metadata still keeps its own copy and stays whole.
 -- ---------------------------------------------------------------------
 CREATE TABLE events (
   event_id    text PRIMARY KEY,     -- 'evt_000001'
@@ -63,6 +71,7 @@ CREATE TABLE events (
   customer_id text,
   material_id text,                 -- source `material`
   machine_id  text,                 -- null on 704 events, kept null
+  facility_id text,                 -- source metadata `facility`, la_01 | la_02
   quantity    integer,              -- meaning depends on event_type
   metadata    jsonb                 -- 15 keys across the feed, kept whole
 );
@@ -93,16 +102,21 @@ CREATE TABLE parts (
 
 -- ---------------------------------------------------------------------
 -- @table machines
--- Created on sight from events.machine_id: press_01..06, qc_01..02,
--- tooling_01..02. kind is the code prefix, stamped once on first sight
--- and never revisited. All ten codes appear under both facilities;
--- the registry treats a code as one machine, and if the sites turn out
--- to number their own equipment the split is a replay away, since every
--- event carries its facility.
+-- Created on sight from (events.facility_id, events.machine_id):
+-- press_01..06, qc_01..02, tooling_01..02, and all ten codes appear under
+-- both la_01 and la_02. The sites number their own equipment, so press_01
+-- at la_01 and press_01 at la_02 are two different presses that happen to
+-- share a name. Location plus code is therefore the key, and twenty rows
+-- is the true count of physical units.
+--
+-- kind stays a fact about the code rather than the unit: it is the prefix,
+-- stamped once on first sight of the unit and never revisited.
 -- ---------------------------------------------------------------------
 CREATE TABLE machines (
-  machine_id text         PRIMARY KEY,           -- 'press_04'
-  kind       machine_kind NOT NULL               -- from the prefix, first sight only
+  facility_id text,                              -- 'la_01', where the unit stands
+  machine_id  text,                              -- 'press_04', unique only within a site
+  kind        machine_kind NOT NULL,             -- from the prefix, first sight only
+  PRIMARY KEY (facility_id, machine_id)
 );
 
 -- ---------------------------------------------------------------------
@@ -153,7 +167,7 @@ CREATE TABLE jobs (
   -- lot is deliberately not here: 14 of 312 jobs carry one, 5 of those scans
   -- land after the last cycle, and no lot is shared between jobs, so it stays
   -- in the event's metadata until the feed can support traceability.
-  machine_id            text        REFERENCES machines(machine_id),   -- the press, from job_started
+  machine_id            text,                                          -- the press, from job_started
   tool_id               text,                                          -- 25 codes, unvalidated
   operator_id           text,                                          -- badge code, unvalidated
 
@@ -173,7 +187,14 @@ CREATE TABLE jobs (
   cycle_units           integer     NOT NULL DEFAULT 0,   -- press throughput, NOT order progress
   inspection_pass_units integer     NOT NULL DEFAULT 0,
   inspection_fail_units integer     NOT NULL DEFAULT 0,
-  event_count           integer     NOT NULL DEFAULT 0
+  event_count           integer     NOT NULL DEFAULT 0,
+
+  -- A press is identified by where it stands, so the reference is the pair.
+  -- Verified across all 312 jobs: each carries exactly one facility, and
+  -- every job_started names a machine under that same facility. MATCH SIMPLE
+  -- leaves the check unenforced while machine_id is null, which is what a
+  -- job that has not started yet looks like.
+  FOREIGN KEY (facility_id, machine_id) REFERENCES machines (facility_id, machine_id)
 );
 
 -- ---------------------------------------------------------------------
@@ -203,7 +224,7 @@ CREATE TABLE users (
 CREATE INDEX events_job_time_idx   ON events (job_id, occurred_at);
 CREATE INDEX events_type_time_idx  ON events (event_type, occurred_at DESC);
 CREATE INDEX events_time_idx       ON events (occurred_at DESC);
-CREATE INDEX events_machine_idx    ON events (machine_id, occurred_at DESC) WHERE machine_id IS NOT NULL;
+CREATE INDEX events_machine_idx    ON events (facility_id, machine_id, occurred_at DESC) WHERE machine_id IS NOT NULL;
 CREATE INDEX events_metadata_gin   ON events USING gin (metadata jsonb_path_ops);
 CREATE INDEX events_defect_idx     ON events ((metadata ->> 'defect_code'), occurred_at DESC)
                                     WHERE metadata ? 'defect_code';
@@ -214,7 +235,7 @@ CREATE INDEX jobs_status_idx       ON jobs (facility_id, status);   -- facility 
 CREATE INDEX jobs_customer_idx     ON jobs (customer_id, created_event_at DESC);
 CREATE INDEX jobs_open_due_idx     ON jobs (target_due_at) WHERE completed_at IS NULL;
 CREATE INDEX jobs_silent_idx       ON jobs (last_event_at) WHERE completed_at IS NULL;
-CREATE INDEX jobs_machine_idx      ON jobs (machine_id) WHERE machine_id IS NOT NULL;
+CREATE INDEX jobs_machine_idx      ON jobs (facility_id, machine_id) WHERE machine_id IS NOT NULL;
 
 -- ---------------------------------------------------------------------
 -- @ingest
@@ -241,7 +262,7 @@ CREATE FUNCTION apply_event(p events) RETURNS void
 LANGUAGE plpgsql AS $$
 BEGIN
   INSERT INTO jobs (job_id, customer_id, part_id, material_id, facility_id)
-  VALUES (p.job_id, p.customer_id, p.part_id, p.material_id, p.metadata ->> 'facility')
+  VALUES (p.job_id, p.customer_id, p.part_id, p.material_id, p.facility_id)
   ON CONFLICT (job_id) DO NOTHING;
 
   UPDATE jobs j SET
@@ -306,8 +327,11 @@ BEGIN
     VALUES (p_raw ->> 'part_id', p_raw ->> 'material')
     ON CONFLICT DO NOTHING;   -- a later disagreement is a finding, not an overwrite
 
-  INSERT INTO machines (machine_id, kind)
-    SELECT p_raw ->> 'machine_id',
+  -- One row per physical unit, so a code seen at a second site registers
+  -- as a second machine rather than colliding with the first.
+  INSERT INTO machines (facility_id, machine_id, kind)
+    SELECT v_md ->> 'facility',
+           p_raw ->> 'machine_id',
            split_part(p_raw ->> 'machine_id', '_', 1)::machine_kind
     WHERE p_raw ->> 'machine_id' IS NOT NULL
     ON CONFLICT DO NOTHING;
@@ -316,10 +340,10 @@ BEGIN
   --    repeat that says nothing new: if no column differs, no row is
   --    touched, RETURNING yields nothing and FOUND is false.
   INSERT INTO events (event_id, occurred_at, event_type, job_id, part_id,
-                      customer_id, material_id, machine_id, quantity, metadata)
+                      customer_id, material_id, machine_id, facility_id, quantity, metadata)
   VALUES (p_raw ->> 'event_id', (p_raw ->> 'timestamp')::timestamptz, p_raw ->> 'event_type',
           p_raw ->> 'job_id', p_raw ->> 'part_id', p_raw ->> 'customer_id',
-          p_raw ->> 'material', p_raw ->> 'machine_id',
+          p_raw ->> 'material', p_raw ->> 'machine_id', v_md ->> 'facility',
           (p_raw ->> 'quantity')::int, v_md)
   ON CONFLICT (event_id) DO UPDATE SET
     occurred_at = EXCLUDED.occurred_at,
@@ -329,6 +353,7 @@ BEGIN
     customer_id = EXCLUDED.customer_id,
     material_id = EXCLUDED.material_id,
     machine_id  = EXCLUDED.machine_id,
+    facility_id = EXCLUDED.facility_id,
     quantity    = EXCLUDED.quantity,
     metadata    = EXCLUDED.metadata
   WHERE events.* IS DISTINCT FROM EXCLUDED.*
@@ -439,10 +464,10 @@ CREATE VIEW dq_unattributed_events AS         -- 704 events with no machine
   FROM events GROUP BY 1 ORDER BY 2 DESC;
 
 CREATE VIEW dq_censored_cycles AS             -- 1,072 cycles pinned at the 1,860 s ceiling
-  SELECT machine_id,
+  SELECT facility_id, machine_id,
          count(*) FILTER (WHERE (metadata ->> 'cycle_time_seconds')::int >= 1860) AS at_ceiling,
          count(*) AS cycles
-  FROM events WHERE event_type = 'cycle_completed' GROUP BY 1;
+  FROM events WHERE event_type = 'cycle_completed' GROUP BY 1, 2;
 
 CREATE VIEW dq_part_material_conflicts AS     -- none in the sample; guards parts.material_id
   SELECT e.part_id, p.material_id AS part_material, e.material_id AS event_material, count(*)
@@ -495,7 +520,7 @@ CREATE VIEW dq_vocabulary AS
   SELECT 'material', material_id, count(*)
   FROM events GROUP BY 2
   UNION ALL
-  SELECT 'facility', metadata ->> 'facility', count(*)
+  SELECT 'facility', facility_id, count(*)
   FROM events GROUP BY 2
   UNION ALL
   SELECT 'tool', metadata ->> 'tool_id', count(*)

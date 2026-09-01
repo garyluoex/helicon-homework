@@ -85,8 +85,8 @@ for f, days in (("home.html", "42"), ("home7.html", "7"), ("home30.html", "30"))
           re.search(r"([\d,]+) items · open blocks and sensor anomalies", ft).group(0))
     check(label, "open blocks caption", f"{n(t['open_blocks'])} jobs with more blocks than unblocks",
           re.search(r"([\d,]+) jobs with more blocks than unblocks", ft).group(0))
-    check(label, "glitch caption", f"{n(t['glitch_events'])} anomalies across {n(t['glitch_machines'])} machines",
-          re.search(r"([\d,]+) anomalies across ([\d,]+) machines", ft).group(0))
+    check(label, "glitch caption", f"{n(t['glitch_events'])} anomalies across {n(t['glitch_units'])} units",
+          re.search(r"([\d,]+) anomalies across ([\d,]+) units", ft).group(0))
 
 hb, hg = tables(page("home.html"))[:2]
 tb = {r["job_id"]: r for r in truth["home_open_block_rows"]}
@@ -185,17 +185,20 @@ check("Part / part_1015", "rejected units caption",
 EQ = {"press": "equip_press.html", "qc": "equip_qc.html", "tooling": "equip_tooling.html"}
 for kind, f in EQ.items():
     h = page(f)
-    erows = {r[0]: r for r in tables(h)[0][1:]}
+    # Location leads the row, so a rendered row is keyed on the pair.
+    erows = {(r[0], r[1]): r for r in tables(h)[0][1:]}
     want = [r for r in truth["equipment_rows"] if r["kind"] == kind]
     check(f"Equipment / {kind}", "row count", len(want), len(erows))
     for r in want:
-        check(f"Equipment / {kind}", r["machine_id"],
-              [r["machine_id"], "Unhealthy" if r["glitches"] > 1 else "Healthy",
+        unit = (r["facility_id"], r["machine_id"])
+        check(f"Equipment / {kind}", f"{unit[0]}/{unit[1]}",
+              [r["facility_id"], r["machine_id"], "Unhealthy" if r["glitches"] > 1 else "Healthy",
                n(r["events"]), n(r["metric"]), n(r["glitches"])],
-              erows[r["machine_id"]])
-    check(f"Equipment / {kind}", "machine caption",
-          f"{truth['equipment_kpis']['machines']} machine codes",
-          re.search(r"(\d+) machine codes", flat(h)).group(0))
+              erows[unit])
+    kp = truth["equipment_kpis"]
+    check(f"Equipment / {kind}", "unit caption",
+          f"{kp['codes']} machine codes across {kp['locations']} locations, {kp['units']} units in all",
+          re.search(r"(\d+) machine codes across (\d+) locations, (\d+) units in all", flat(h)).group(0))
 
 # ---------------- Job detail ------------------------------------------
 for jid in ("job_0080", "job_0166", "job_0293"):

@@ -18,7 +18,7 @@ type Kpis = {
   pressed: string; pass_units: string; fail_units: string;
   // Totals for the attention notes. Kept as their own counts rather than read
   // off the rendered rows, so the heading stays right whatever the tables show.
-  open_blocks: string; glitch_events: string; glitch_machines: string;
+  open_blocks: string; glitch_events: string; glitch_units: string;
 };
 type JobRow = { job_id: string; cause: string | null; where_at: string; when_at: string; silent_days: string };
 type EquipRow = { where_at: string; signals: string; alerts: string; when_at: string; silent_days: string };
@@ -67,8 +67,8 @@ export default async function Home({
                  group by 1 having count(*) filter (where event_type = 'job_blocked')
                             > count(*) filter (where event_type = 'job_unblocked')) b)::text as open_blocks,
               (select count(*) from events where event_type = 'sensor_glitch')::text as glitch_events,
-              (select count(distinct coalesce(machine_id, 'press unassigned'))
-               from events where event_type = 'sensor_glitch')::text as glitch_machines
+              (select count(distinct (facility_id, coalesce(machine_id, 'press unassigned')))
+               from events where event_type = 'sensor_glitch')::text as glitch_units
        from events`, [rangeDays]),
 
     // A job with more blocks than unblocks never had its stop lifted. Three of
@@ -95,7 +95,7 @@ export default async function Home({
     query<EquipRow>(
       `with feed as (select max(occurred_at) as hi from events)
        select * from (
-         select coalesce(e.machine_id, 'press unassigned') as where_at,
+         select coalesce(e.machine_id, 'press unassigned') || ' · ' || e.facility_id as where_at,
                 string_agg(distinct e.metadata ->> 'signal', ', ') as signals,
                 count(*) as alerts,
                 to_char(max(e.occurred_at), 'YYYY-MM-DD') as when_at,
@@ -227,7 +227,7 @@ export default async function Home({
             <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
               <div style={{ fontFamily: "var(--font-heading)", fontSize: 16, letterSpacing: ".02em" }}>Equipments</div>
               <span style={muted}>
-                {n(k.glitch_events)} anomalies across {n(k.glitch_machines)} machines
+                {n(k.glitch_events)} anomalies across {n(k.glitch_units)} units
               </span>
             </div>
             <div className="table-scroll">

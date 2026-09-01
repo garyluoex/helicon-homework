@@ -146,17 +146,47 @@ const METRIC = {
   qc: "coalesce(sum(e.quantity) filter (where e.event_type in ('inspection_passed','inspection_failed')), 0)",
   tooling: "count(*) filter (where e.event_type = 'tool_ready')",
 };
+// Operational state, mirroring the page: latest machine_fault per unit, still
+// standing unless the job was unblocked or the unit took another job since.
+const STATE = `
+  fault as (
+    select distinct on (facility_id, machine_id)
+           facility_id, machine_id, job_id, occurred_at, event_id
+    from (select coalesce(e.facility_id, j.facility_id) as facility_id,
+                 coalesce(e.machine_id, j.machine_id) as machine_id,
+                 e.job_id, e.occurred_at, e.event_id
+          from events e left join jobs j using (job_id)
+          where e.event_type = 'job_blocked'
+            and e.metadata ->> 'reason' = 'machine_fault') f
+    where machine_id is not null
+    order by facility_id, machine_id, occurred_at desc, event_id desc
+  ),
+  state as (
+    select f.facility_id, f.machine_id, f.occurred_at as last_fault_at,
+           not (exists (select 1 from events u
+                        where u.job_id = f.job_id and u.event_type = 'job_unblocked'
+                          and (u.occurred_at, u.event_id) > (f.occurred_at, f.event_id))
+             or exists (select 1 from events s
+                        where s.facility_id = f.facility_id and s.machine_id = f.machine_id
+                          and s.event_type = 'job_started'
+                          and (s.occurred_at, s.event_id) > (f.occurred_at, f.event_id))) as down
+    from fault f
+  )`;
 out.equipment_rows = [];
 for (const [kind, metric] of Object.entries(METRIC)) {
   const rows = await q(`
+    with ${STATE}
     select m.facility_id, m.machine_id, m.kind::text as kind,
            count(e.event_id)::int as events,
            count(*) filter (where e.event_type = 'sensor_glitch')::int as glitches,
-           ${metric}::int as metric
+           ${metric}::int as metric,
+           to_char(max(s.last_fault_at), 'YYYY-MM-DD') as last_fault,
+           coalesce(bool_or(s.down), false)            as down
     from machines m
       left join events e on e.facility_id = m.facility_id and e.machine_id = m.machine_id
+      left join state s  on s.facility_id = m.facility_id and s.machine_id = m.machine_id
     where m.kind = $1::machine_kind
-    group by m.facility_id, m.machine_id
+    group by m.facility_id, m.machine_id, s.down
     order by m.facility_id, m.machine_id`, [kind]);
   out.equipment_rows.push(...rows);
 }

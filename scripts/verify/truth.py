@@ -331,6 +331,34 @@ def main():
     out["part_rows"] = prows
 
     # ---- equipment -------------------------------------------------------
+    # Operational state, the same rule the Equipment page applies: a unit reads
+    # by its latest machine_fault block alone, and that block stands until the
+    # unit is seen working again -- the job's own unblock, or any job started
+    # on that unit since. A fault names a unit, never a bare code, so one site
+    # going down says nothing about the other's machine of the same name.
+    latest_fault = {}
+    for e in events:
+        if e["event_type"] != "job_blocked":
+            continue
+        if (e.get("metadata") or {}).get("reason") != "machine_fault":
+            continue
+        j = jobs.get(e["job_id"], {})
+        code = e["machine_id"] or j.get("machine_id")
+        if code is None:
+            continue
+        unit = (fac(e) or j.get("facility_id"), code)
+        key = (e["_at"], e["event_id"])
+        if unit not in latest_fault or key > latest_fault[unit][0]:
+            latest_fault[unit] = (key, e["job_id"])
+
+    def is_down(unit, key, job_id):
+        unblocked = any(e["event_type"] == "job_unblocked" and e["job_id"] == job_id
+                        and (e["_at"], e["event_id"]) > key for e in events)
+        restarted = any(e["event_type"] == "job_started"
+                        and (fac(e), e["machine_id"]) == unit
+                        and (e["_at"], e["event_id"]) > key for e in events)
+        return not (unblocked or restarted)
+
     erows = []
     for facility, m in sorted(machines):
         es = [e for e in events if e["machine_id"] == m and fac(e) == facility]
@@ -339,10 +367,13 @@ def main():
                   else sum(e["quantity"] or 0 for e in es
                            if e["event_type"] in ("inspection_passed", "inspection_failed")) if kind == "qc"
                   else sum(1 for e in es if e["event_type"] == "tool_ready"))
+        fault = latest_fault.get((facility, m))
         erows.append({
             "facility_id": facility, "machine_id": m, "kind": kind, "events": len(es),
             "glitches": sum(1 for e in es if e["event_type"] == "sensor_glitch"),
             "metric": metric,
+            "last_fault": fault[0][0].strftime("%Y-%m-%d") if fault else None,
+            "down": is_down((facility, m), *fault) if fault else False,
         })
     out["equipment_rows"] = erows
     out["equipment_kpis"] = {

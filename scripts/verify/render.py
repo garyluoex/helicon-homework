@@ -192,7 +192,8 @@ for kind, f in EQ.items():
     for r in want:
         unit = (r["facility_id"], r["machine_id"])
         check(f"Equipment / {kind}", f"{unit[0]}/{unit[1]}",
-              [r["facility_id"], r["machine_id"], "Unhealthy" if r["glitches"] > 1 else "Healthy",
+              [r["facility_id"], r["machine_id"],
+               "Non-operational" if r["down"] else "Operational", r["last_fault"] or "—",
                n(r["events"]), n(r["metric"]), n(r["glitches"])],
               erows[unit])
     kp = truth["equipment_kpis"]

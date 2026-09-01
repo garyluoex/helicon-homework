@@ -82,7 +82,7 @@ de = {(r["facility_id"], r["machine_id"]): r for r in db["equipment_rows"]}
 check("Equipment / rows", "row count", len(truth["equipment_rows"]), len(de))
 for r in truth["equipment_rows"]:
     unit = (r["facility_id"], r["machine_id"])
-    for f in ("kind", "events", "glitches", "metric"):
+    for f in ("kind", "events", "glitches", "metric", "last_fault", "down"):
         check("Equipment / rows", f"{unit[0]}/{unit[1]}.{f}", r[f], de.get(unit, {}).get(f))
 
 # job detail

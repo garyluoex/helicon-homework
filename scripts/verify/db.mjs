@@ -180,6 +180,72 @@ out.equipment_kpis = await one(`
          (select count(*) from machine_state where state <> 'operational')::int as flagged
   from machines`);
 
+// ---- machine detail (app/equipment/[facilityId]/[machineId]/page.tsx) -
+// The page's own two queries, run for every unit. truth.py folds the same
+// figures out of the raw JSONL, so the diff catches a run list that drifts.
+const UNIT_SQL = `
+  select s.kind::text as kind, s.state, s.glitches::int as glitches,
+         to_char(s.last_fault_at, 'YYYY-MM-DD') as last_fault,
+         s.last_fault_job_id, s.last_job_id,
+         to_char(s.last_job_at, 'YYYY-MM-DD') as last_job_at,
+         s.last_job_signals as signal,
+         (select count(*) from events e
+           where e.facility_id = s.facility_id
+             and e.machine_id = s.machine_id)::int as events,
+         (select count(distinct e.job_id) from events e
+           where e.facility_id = s.facility_id
+             and e.machine_id = s.machine_id)::int as jobs
+  from machine_state s
+  where s.facility_id = $1 and s.machine_id = $2`;
+
+const RUNS_SQL = `
+  with feed as (select max(occurred_at) as hi from events),
+  visit as (
+    select job_id, max(occurred_at) as last_on_unit
+    from events
+    where facility_id = $1 and machine_id = $2 and job_id is not null
+    group by job_id),
+  glitch as (
+    select coalesce(e.facility_id, j.facility_id) as facility_id,
+           coalesce(e.machine_id, j.machine_id)   as machine_id,
+           e.job_id,
+           count(*)                                          as glitches,
+           string_agg(distinct e.metadata ->> 'signal', ', ') as signals
+    from events e left join jobs j using (job_id)
+    where e.event_type = 'sensor_glitch'
+    group by 1, 2, 3)
+  select j.job_id, j.status::text,
+         to_char(v.last_on_unit, 'YYYY-MM-DD') as when_at,
+         coalesce(g.glitches, 0)::int as glitches,
+         g.signals,
+         replace(j.customer_id, 'cust_', '') || ' · ' || j.part_id || ' · ' || j.material_id as subtitle,
+         j.target_quantity, j.cycle_units, j.cycle_count,
+         j.inspection_pass_units as pass_units,
+         j.inspection_fail_units as fail_units,
+         (select count(*) from events b
+          where b.job_id = j.job_id and b.event_type = 'job_blocked')::int   as blocks,
+         (select count(*) from events b
+          where b.job_id = j.job_id and b.event_type = 'job_unblocked')::int as unblocks,
+         to_char(j.target_due_at, 'YYYY-MM-DD') as due,
+         (j.status <> 'completed' and j.target_due_at < feed.hi) as overdue,
+         (j.inspection_pass_units + j.inspection_fail_units > 0
+          and j.inspection_fail_units::numeric
+              / (j.inspection_pass_units + j.inspection_fail_units) > 0.15) as failing
+  from visit v
+       join jobs j using (job_id)
+       left join glitch g on g.facility_id = $1 and g.machine_id = $2
+                         and g.job_id = v.job_id
+       cross join feed
+  order by v.last_on_unit desc, j.job_id desc
+  limit 10`;
+
+out.machine_detail = {};
+for (const u of await q("select facility_id, machine_id from machine_state order by 1, 2")) {
+  const key = `${u.facility_id}/${u.machine_id}`;
+  const args = [u.facility_id, u.machine_id];
+  out.machine_detail[key] = { ...(await one(UNIT_SQL, args)), runs: await q(RUNS_SQL, args) };
+}
+
 // ---- job detail (app/jobs/[jobId]/page.tsx) --------------------------
 out.job_detail = {};
 for (const jobId of ["job_0001", "job_0080", "job_0166", "job_0189", "job_0216", "job_0293"]) {

@@ -72,7 +72,8 @@ Refer to schema design in `designs/schema_proposal.html`.
 | Customer | `/customers/[id]` | one account's stats, its parts and its jobs |
 | Parts | `/parts` | 25 parts with scrap rate and median cycle gap |
 | Part | `/parts/[id]` | one part's stats, real defect codes, and its jobs |
-| Equipment | `/equipment` | presses, inspection stations and tooling cells, one row per physical unit (location + machine), each in one of three states |
+| Equipment | `/equipment` | presses, inspection stations and tooling cells, one row per physical unit (location + machine), each in one of three states; a row opens the unit |
+| Machine | `/equipment/[facility]/[machine]` | one unit's state and why it reads that way, plus its ten most recent runs |
 
 ### Machine status
 
@@ -109,10 +110,25 @@ degraded, because `job_0119`, the last job it was given, threw a `temp` glitch
 and no job has been put on the press since. Nothing is non-operational.
 
 The fold lives in one place, the `machine_state` view (`@state` in
-`scripts/schema.sql`). Equipment reads it, Home's attention table reads it, and
-the verify harness reads it, so the rule cannot drift between screens. Glitches
-stay a column of their own beside the state: the tally is history, the state is
-now.
+`scripts/schema.sql`). Equipment reads it, the machine page reads it, Home's
+attention table reads it, and the verify harness reads it, so the rule cannot
+drift between screens. Glitches stay a column of their own beside the state: the
+tally is history, the state is now.
+
+### One machine's runs
+
+An Equipment row opens the unit at `/equipment/[facility]/[machine]`, which
+carries the same badge and then says why it reads that way, naming the fault or
+the glitch behind it. Under that are the unit's **ten most recent runs**, newest
+first.
+
+A run is one job's work on this unit, dated by the last event the unit reported
+for that job, so a job that comes back to the same press sorts by its latest
+visit rather than its first. Each run carries its own open blocks and sensor
+glitches, and the glitches use the same attribution the state does, so one the
+unit's tally counts is one a run in this list carries. That dating is also why
+the badge's date and the newest run's date can differ: the badge is dated by
+when the unit was last *assigned* work, the run by when it last *reported* any.
 
 ### Job alerts (Future Idea)
 

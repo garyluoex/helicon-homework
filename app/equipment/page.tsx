@@ -2,6 +2,7 @@ import Header from "@/app/_components/header";
 import { chrome } from "@/lib/chrome";
 import { one, query } from "@/lib/db";
 import { dash, MACHINE_STATE, num } from "@/lib/format";
+import ClickRow from "@/lib/row";
 import { orderBy, sortHref, Th, type Column, type SortSpec } from "@/lib/table";
 
 export const dynamic = "force-dynamic";
@@ -114,10 +115,11 @@ export default async function EquipmentPage({
                 <tbody>
                   {rows.map((r) => {
                     const state = MACHINE_STATE[r.state] ?? MACHINE_STATE.operational;
+                    const unit = `/equipment/${r.facility_id}/${r.machine_id}`;
                     return (
-                      <tr key={`${r.facility_id}/${r.machine_id}`}>
+                      <ClickRow key={unit} href={unit}>
                         <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.facility_id}</td>
-                        <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.machine_id}</td>
+                        <td style={{ fontVariantNumeric: "tabular-nums" }}><a href={unit}>{r.machine_id}</a></td>
                         <td>
                           <span className="tag" style={{ background: state.bg, color: state.ink }}>
                             {state.label}
@@ -128,7 +130,7 @@ export default async function EquipmentPage({
                         <td style={numeric}>{num(r.events)}</td>
                         <td style={numeric}>{num(r.metric)}</td>
                         <td style={numeric}>{num(r.glitches)}</td>
-                      </tr>
+                      </ClickRow>
                     );
                   })}
                 </tbody>

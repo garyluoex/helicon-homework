@@ -213,6 +213,97 @@ for kind, f in EQ.items():
           re.search(r"(\d+) machine codes across (\d+) locations, (\d+) units in all, "
                     r"(\d+) not operational", flat(h)).group(0))
 
+# ---------------- Machine detail --------------------------------------
+# /equipment/[facility]/[machine]. Nothing here is a table, so the run blocks
+# are read back one at a time: the tags the page decides to show, the five
+# fields it lays out, and the red it paints a late or failing one.
+KIND_LABEL = {"press": "Press", "qc": "Inspection station", "tooling": "Tooling cell"}
+STATUS_LABEL = {"created": "Created", "tooling_ready": "Tooling ready",
+                "in_progress": "In progress", "blocked": "Blocked",
+                "on_hold": "On hold", "completed": "Completed"}
+INK_BAD = "#7d2a22"
+
+CHIP = re.compile(r'<span style="font-size:10px;letter-spacing:\.1em;text-transform:uppercase[^"]*">'
+                  + SEG + r'</span><span class="tag"[^>]*>' + SEG + r'</span>', re.S)
+RUN = re.compile(r'<a href="/jobs/(job_\d+)"(.*?)</a>', re.S)
+RUN_TAG = re.compile(r'<span class="tag"[^>]*>' + SEG + r'</span>', re.S)
+RUN_FIELD = re.compile(r'<span style="letter-spacing:\.06em[^"]*">' + SEG + r'</span>'
+                       r'<span style="font-variant-numeric:tabular-nums;color:([^"]*)">' + SEG + r'</span>', re.S)
+
+
+def run_flags(r):
+    """The tags the page hangs on a run, in the order it builds them."""
+    out, open_blocks = [], r["blocks"] - r["unblocks"]
+    if open_blocks > 0:
+        out.append(f"{open_blocks} open block" + ("s" if open_blocks > 1 else ""))
+    if r["glitches"]:
+        signal = f' ({r["signals"]})' if r["signals"] else ""
+        out.append(f'{r["glitches"]} sensor glitch' + ("es" if r["glitches"] > 1 else "") + signal)
+    return out or ["No blocks or glitches"]
+
+
+def run_fields(r):
+    """The five labelled values under a run, each with the ink it is painted."""
+    ordered = "—" if r["target_quantity"] is None else n(r["target_quantity"])
+    return [
+        ("order", f"{ordered} u", "inherit"),
+        ("pressed", f'{n(r["cycle_units"])} u in {n(r["cycle_count"])} cycles', "inherit"),
+        ("pass / fail", f'{n(r["pass_units"])} / {n(r["fail_units"])}',
+         INK_BAD if r["failing"] else "inherit"),
+        ("blocks", f'{r["blocks"]} raised, {r["unblocks"]} cleared' if r["blocks"] else "none",
+         INK_BAD if r["blocks"] - r["unblocks"] > 0 else "inherit"),
+        ("due", r["due"] or "—", INK_BAD if r["overdue"] else "inherit"),
+    ]
+
+
+for unit in ("la_01/press_05", "la_01/press_01", "la_02/press_03", "la_01/tooling_01"):
+    t = truth["machine_detail"][unit]
+    facility, machine = unit.split("/")
+    h = page(f'unit_{facility}_{machine}.html')
+    label = f"Machine / {unit}"
+
+    check(label, "kind", f"{KIND_LABEL[t['kind']]} · primary key: location + machine",
+          text(re.search(r'<div class="card-kicker" style="line-height:1.5">' + SEG + r"</div>", h, re.S).group(1)))
+    chips = {text(k): text(v) for k, v in CHIP.findall(h)}
+    check(label, "Status chip", STATE_LABEL[t["state"]], chips["Status"])
+    check(label, "Location chip", facility, chips["Location"])
+    check(label, "Machine chip", machine, chips["Machine"])
+    check(label, "Events chip", n(t["events"]), chips["Events"])
+    check(label, "Glitches chip", n(t["glitches"]), chips["Glitches"])
+
+    # Why the badge reads as it does. The date is the assignment's, never the
+    # newest run's, which is the whole point of checking it here.
+    why = (f'Stopped since {t["last_fault"]}: the machine fault raised on '
+           f'{t["last_fault_job_id"]} still stands, and the unit has been assigned no job since.'
+           if t["state"] == "non_operational" else
+           f'Running, but the job it was last assigned, {t["last_job_id"]}, '
+           f'reported a {t["signal"]} glitch.' if t["state"] == "degraded" else
+           f'Running. Last assigned to {t["last_job_id"]} on {t["last_job_at"]}.'
+           if t["last_job_id"] else "This unit has never been assigned a job in the feed.")
+    check(label, "state explanation", why,
+          text(re.search(r'<div style="font-size:12px;color:color-mix\(in srgb, '
+                         r'var\(--color-text\) 55%, transparent\);margin-bottom:26px">'
+                         + SEG + r"</div>", h, re.S).group(1)))
+
+    runs = RUN.findall(h)
+    check(label, "run count", len(t["runs"]), len(runs))
+    check(label, "run order", [r["job_id"] for r in t["runs"]], [jid for jid, _ in runs])
+
+    blocked = sum(1 for r in t["runs"] if r["status"] == "blocked" or r["blocks"] > r["unblocks"])
+    glitches = sum(r["glitches"] for r in t["runs"])
+    check(label, "run list note",
+          f'Newest first · {len(t["runs"])} of {n(t["jobs"])} jobs on this unit · shown here: '
+          f'{blocked} blocked, {glitches} sensor glitch' + ("" if glitches == 1 else "es"),
+          text(re.search(r"</h4><span style=\"[^\"]*\">" + SEG + r"</span>", h, re.S).group(1)))
+
+    for r, (jid, block) in zip(t["runs"], runs):
+        check(label, f"{jid} date", r["when_at"],
+              re.search(r'font-size:12px;color:color-mix[^"]*">([\d-]+)</span>', block).group(1))
+        check(label, f"{jid} tags", [STATUS_LABEL[r["status"]]] + run_flags(r),
+              [text(x) for x in RUN_TAG.findall(block)])
+        check(label, f"{jid} fields", run_fields(r),
+              [(text(k), text(v), ink) for k, ink, v in RUN_FIELD.findall(block)])
+
 # ---------------- Job detail ------------------------------------------
 for jid in ("job_0080", "job_0166", "job_0293"):
     t = truth["job_detail"][jid]

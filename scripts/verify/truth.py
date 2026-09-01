@@ -413,6 +413,68 @@ def main():
         "flagged": sum(1 for r in erows if r["state"] != "operational"),
     }
 
+    # ---- machine detail pages --------------------------------------------
+    # /equipment/[facility]/[machine]: the unit's chips, and the ten most recent
+    # runs on it. A run is one job's work on this unit, dated by the last event
+    # the unit reported for that job, so a job that came back to the same press
+    # sorts by its latest visit. Glitches on a run reuse the attribution above,
+    # the same fallback the page's own query applies, so a glitch the unit's
+    # tally counts is a glitch some run in this list carries.
+    RUNS_SHOWN = 10
+    FAIL_RATE_FLAGGED = 0.15   # the share of judged units the page reads as a bad run
+
+    visits = defaultdict(dict)          # unit -> job_id -> last event the unit reported for it
+    for e in events:
+        if e["machine_id"] is None or e["job_id"] is None:
+            continue
+        unit = (fac(e), e["machine_id"])
+        visits[unit][e["job_id"]] = greatest(visits[unit].get(e["job_id"]), e["_at"])
+
+    blocks_by_job, unblocks_by_job = defaultdict(int), defaultdict(int)
+    for e in events:
+        blocks_by_job[e["job_id"]] += e["event_type"] == "job_blocked"
+        unblocks_by_job[e["job_id"]] += e["event_type"] == "job_unblocked"
+
+    units = {}
+    for r in erows:
+        unit = (r["facility_id"], r["machine_id"])
+        # Newest first, job id breaking a tie, exactly as the page orders.
+        newest = sorted(visits[unit].items(), key=lambda kv: (kv[1], kv[0]), reverse=True)
+        runs = []
+        for jid, last_on_unit in newest[:RUNS_SHOWN]:
+            j = jobs[jid]
+            glitched = on_job.get((unit, jid), [])
+            judged = j["inspection_pass_units"] + j["inspection_fail_units"]
+            runs.append({
+                "job_id": jid,
+                "when_at": last_on_unit.strftime("%Y-%m-%d"),
+                "status": j["status"],
+                "glitches": len(glitched),
+                "signals": ", ".join(sorted({(e.get("metadata") or {}).get("signal")
+                                             for e in glitched})) or None,
+                "subtitle": f'{j["customer_id"].replace("cust_", "")} · {j["part_id"]} · {j["material_id"]}',
+                "target_quantity": j["target_quantity"],
+                "cycle_units": j["cycle_units"], "cycle_count": j["cycle_count"],
+                "pass_units": j["inspection_pass_units"],
+                "fail_units": j["inspection_fail_units"],
+                "blocks": blocks_by_job[jid], "unblocks": unblocks_by_job[jid],
+                "due": j["target_due_at"].strftime("%Y-%m-%d") if j["target_due_at"] else None,
+                "overdue": bool(j["status"] != "completed" and j["target_due_at"]
+                                and j["target_due_at"] < hi),
+                "failing": bool(judged and j["inspection_fail_units"] / judged > FAIL_RATE_FLAGGED),
+            })
+        units[f'{r["facility_id"]}/{r["machine_id"]}'] = {
+            "kind": r["kind"], "state": r["state"],
+            "events": r["events"], "jobs": len(visits[unit]), "glitches": r["glitches"],
+            "last_fault": r["last_fault"],
+            "last_fault_job_id": latest_fault[unit][1] if unit in latest_fault else None,
+            "last_job_id": r["last_job_id"],
+            "last_job_at": assigned[unit][-1]["_at"].strftime("%Y-%m-%d") if assigned[unit] else None,
+            "signal": r["signal"],
+            "runs": runs,
+        }
+    out["machine_detail"] = units
+
     # ---- a sample of job detail pages ------------------------------------
     sample = ["job_0001", "job_0080", "job_0166", "job_0189", "job_0216", "job_0293"]
     detail = {}

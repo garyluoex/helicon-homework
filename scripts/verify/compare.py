@@ -86,6 +86,25 @@ for r in truth["equipment_rows"]:
               "last_job_id", "signal", "last_event_at", "silent_days"):
         check("Equipment / rows", f"{unit[0]}/{unit[1]}.{f}", r[f], de.get(unit, {}).get(f))
 
+# machine detail
+UNIT_FIELDS = ("kind", "state", "events", "jobs", "glitches", "last_fault",
+               "last_fault_job_id", "last_job_id", "last_job_at", "signal")
+RUN_FIELDS = ("when_at", "status", "glitches", "signals", "subtitle", "target_quantity",
+              "cycle_units", "cycle_count", "pass_units", "fail_units", "blocks",
+              "unblocks", "due", "overdue", "failing")
+check("Machine detail", "unit count", len(truth["machine_detail"]), len(db["machine_detail"]))
+for unit in sorted(truth["machine_detail"]):
+    t, d = truth["machine_detail"][unit], db["machine_detail"].get(unit, {})
+    for f in UNIT_FIELDS:
+        check(f"Machine / {unit}", f, t[f], d.get(f))
+    check(f"Machine / {unit}", "run count", len(t["runs"]), len(d.get("runs", [])))
+    # The order is the page's, so the runs are compared position by position.
+    for i, tr in enumerate(t["runs"]):
+        dr = d.get("runs", [])[i] if i < len(d.get("runs", [])) else {}
+        check(f"Machine / {unit}", f"run {i}.job_id", tr["job_id"], dr.get("job_id"))
+        for f in RUN_FIELDS:
+            check(f"Machine / {unit}", f"run {i} ({tr['job_id']}).{f}", tr[f], dr.get(f))
+
 # job detail
 for jid, t in truth["job_detail"].items():
     d = db["job_detail"][jid]

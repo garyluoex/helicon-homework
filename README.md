@@ -65,14 +65,14 @@ Refer to schema design in `designs/schema_proposal.html`.
 | Page | Route | What it shows |
 |---|---|---|
 | Login | `/login` | one shared credential in env quick hack, gated by middleware |
-| Home | `/` | four KPIs over a selectable window, plus jobs with open blocks and sensor glitches by machine |
+| Home | `/` | four KPIs over a selectable window, plus jobs with open blocks and every unit that is not operational |
 | Jobs | `/jobs` | three tabs with counts, nine sortable columns, filter by job, customer or part |
 | Job | `/jobs/[id]` | six KPIs, lifecycle strip, unit and phase bars, and the job's full event timeline |
 | Customers | `/customers` | six KPIs and a sortable book of accounts |
 | Customer | `/customers/[id]` | one account's stats, its parts and its jobs |
 | Parts | `/parts` | 25 parts with scrap rate and median cycle gap |
 | Part | `/parts/[id]` | one part's stats, real defect codes, and its jobs |
-| Equipment | `/equipment` | presses, inspection stations and tooling cells, one row per physical unit (location + machine), with operational status from machine faults |
+| Equipment | `/equipment` | presses, inspection stations and tooling cells, one row per physical unit (location + machine), each in one of three states |
 
 ### Machine status
 
@@ -81,19 +81,38 @@ codes appear at both `la_01` and `la_02`, so `press_01` names two different
 presses and the screen carries twenty rows, not ten. Everything below is scoped
 to the unit: one site's press going down says nothing about the other's.
 
-A unit reads **Non-operational** when its most recent `job_blocked` carrying
-`reason = machine_fault` is still standing. Seven faults appear in the feed; two
-name no `machine_id`, so they fall back to the press their job started on.
+Three states, in precedence order:
 
-A fault stands until the unit is seen working again, either the job's own
-`job_unblocked` or any job started on that unit since. That second clause
-matters: `job_0125`'s fault on `press_03` is never unblocked, but `press_03`
-takes `job_0166` three hours later and presses through to the end of the feed.
-The stale block belongs to the job, not to the equipment, so **every unit reads
-Operational at the end of this feed** and the table carries the date of each
-unit's last fault beside it.
+| State | Means |
+|---|---|
+| **Non-operational** | the unit's latest `machine_fault` block still stands |
+| **Degraded** | the unit is running, but the job it was last put on threw a sensor glitch |
+| **Operational** | everything else |
 
-Sensor glitches stay a separate count. They are noise on a signal, not a stop.
+Two rules run through both.
+
+**Attribution.** A signal names its unit as location plus code. 8 of the 16
+sensor glitches and 2 of the 7 machine faults name no machine at all, and those
+fall back to the press their job started on. A job never leaves its site, so the
+location is the event's own either way.
+
+**Assignment.** "Seen working again" is the unit's next assignment: a press
+takes `job_started`, a QC station an inspection, a tooling cell `tool_ready`.
+Cycles are deliberately not in that list. A fault lifts when the unit is trusted
+with work, not when the blocked job squeezes out one more part, and that
+distinction is the whole reason `press_03` reads operational: `job_0125`'s fault
+is never unblocked, but the press takes `job_0166` three hours later and runs to
+the end of the feed. The stale block belongs to the job, not to the equipment.
+
+On this feed that leaves **one unit flagged**: `press_05` at `la_01` is
+degraded, because `job_0119`, the last job it was given, threw a `temp` glitch
+and no job has been put on the press since. Nothing is non-operational.
+
+The fold lives in one place, the `machine_state` view (`@state` in
+`scripts/schema.sql`). Equipment reads it, Home's attention table reads it, and
+the verify harness reads it, so the rule cannot drift between screens. Glitches
+stay a column of their own beside the state: the tally is history, the state is
+now.
 
 ### Job alerts (Future Idea)
 

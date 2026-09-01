@@ -36,6 +36,18 @@ export const STATUS: Record<string, Swatch> = {
   completed:     { label: "Completed",     bg: "#dcefe2",                  ink: "#26603f" },
 };
 
+/**
+ * Equipment state, the three-way fold the machine_state view computes. The
+ * amber is the on-hold amber and the red is the blocked red: a unit running
+ * with a warning on it reads like a job on hold, a unit stopped reads like a
+ * job blocked.
+ */
+export const MACHINE_STATE: Record<string, Swatch> = {
+  operational:     { label: "Operational",     bg: "var(--color-accent-2-100)", ink: "var(--color-accent-2-800)" },
+  degraded:        { label: "Degraded",        bg: "#fbe6cd",                   ink: "#7d4f14" },
+  non_operational: { label: "Non-operational", bg: "#f7dcda",                   ink: "#7d2a22" },
+};
+
 export const PRIORITY: Record<string, Swatch> = {
   high:   { label: "high",   bg: "#f7dcda",                 ink: "#7d2a22" },
   normal: { label: "normal", bg: "var(--color-accent-100)", ink: "var(--color-accent-800)" },

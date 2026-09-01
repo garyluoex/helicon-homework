@@ -443,6 +443,117 @@ BEGIN
 END $$;
 
 -- ---------------------------------------------------------------------
+-- @state
+-- What each physical unit is, right now. One definition, read by the
+-- Equipment screen, by Home's attention table and by the verify harness,
+-- so the rule cannot drift between them.
+--
+-- Three states, in precedence order:
+--   non_operational  the unit's latest machine_fault block still stands
+--   degraded         the unit is running, but the job it was last put on
+--                    threw a sensor glitch
+--   operational      everything else
+--
+-- Left text rather than an enum: unlike job_status this is never stored,
+-- and a fourth state should cost a view definition, not a type rebuild.
+-- state_rank is the same fold as an integer, so a screen can sort worst
+-- first without restating the CASE.
+--
+-- Two rules run through all of it.
+--
+-- Attribution. A signal names its unit as (facility_id, machine_id): the
+-- sites number their own equipment, so the pair is the unit and the code
+-- alone is not. 8 of the 16 sensor glitches and 2 of the 7 machine faults
+-- name no machine, and those fall back to the press their job started on.
+-- A job never leaves its site, so the facility is the event's own either way.
+--
+-- Assignment. "Seen working again" is the unit's next assignment: a press
+-- takes job_started, a QC station an inspection, a tooling cell tool_ready.
+-- One list covers all three kinds, since a unit only ever emits its own.
+-- Cycles are deliberately not in it: a fault lifts when the unit is trusted
+-- with work, not when the blocked job squeezes out one more part. That
+-- distinction is the whole reason press_03 reads operational -- job_0125's
+-- fault is never unblocked, but the press takes job_0166 three hours later.
+-- ---------------------------------------------------------------------
+CREATE VIEW machine_state AS
+WITH assigned AS (          -- every assignment, on the unit that took it
+  SELECT facility_id, machine_id, job_id, occurred_at, event_id
+  FROM events
+  WHERE machine_id IS NOT NULL
+    AND event_type IN ('job_started', 'tool_ready',
+                       'inspection_passed', 'inspection_failed')
+),
+last_job AS (               -- the job each unit was last put on
+  SELECT DISTINCT ON (facility_id, machine_id)
+         facility_id, machine_id, job_id, occurred_at
+  FROM assigned
+  ORDER BY facility_id, machine_id, occurred_at DESC, event_id DESC
+),
+glitch AS (                 -- sensor glitches per unit and job, fallback applied
+  SELECT coalesce(e.facility_id, j.facility_id) AS facility_id,
+         coalesce(e.machine_id, j.machine_id)   AS machine_id,
+         e.job_id,
+         count(*)                                          AS glitches,
+         string_agg(DISTINCT e.metadata ->> 'signal', ', ') AS signals,
+         max(e.occurred_at)                                AS last_glitch_at
+  FROM events e LEFT JOIN jobs j USING (job_id)
+  WHERE e.event_type = 'sensor_glitch'
+  GROUP BY 1, 2, 3
+),
+glitch_total AS (           -- ... and over the unit's whole history
+  SELECT facility_id, machine_id, sum(glitches) AS glitches
+  FROM glitch GROUP BY 1, 2
+),
+fault AS (                  -- each unit's most recent machine fault
+  SELECT DISTINCT ON (facility_id, machine_id)
+         facility_id, machine_id, job_id, occurred_at, event_id
+  FROM (SELECT coalesce(e.facility_id, j.facility_id) AS facility_id,
+               coalesce(e.machine_id, j.machine_id)   AS machine_id,
+               e.job_id, e.occurred_at, e.event_id
+        FROM events e LEFT JOIN jobs j USING (job_id)
+        WHERE e.event_type = 'job_blocked'
+          AND e.metadata ->> 'reason' = 'machine_fault') f
+  WHERE machine_id IS NOT NULL
+  ORDER BY facility_id, machine_id, occurred_at DESC, event_id DESC
+),
+standing AS (               -- ... and whether that fault still stands
+  SELECT f.facility_id, f.machine_id, f.job_id, f.occurred_at AS last_fault_at,
+         NOT (EXISTS (SELECT 1 FROM events u
+                      WHERE u.job_id = f.job_id AND u.event_type = 'job_unblocked'
+                        AND (u.occurred_at, u.event_id) > (f.occurred_at, f.event_id))
+           OR EXISTS (SELECT 1 FROM assigned a
+                      WHERE a.facility_id = f.facility_id AND a.machine_id = f.machine_id
+                        AND (a.occurred_at, a.event_id) > (f.occurred_at, f.event_id))) AS down
+  FROM fault f
+),
+activity AS (               -- when the unit was last heard from at all
+  SELECT facility_id, machine_id, max(occurred_at) AS last_event_at
+  FROM events WHERE machine_id IS NOT NULL GROUP BY 1, 2
+)
+SELECT m.facility_id, m.machine_id, m.kind,
+       CASE WHEN coalesce(s.down, false)     THEN 'non_operational'
+            WHEN coalesce(g.glitches, 0) > 0 THEN 'degraded'
+            ELSE 'operational' END AS state,
+       CASE WHEN coalesce(s.down, false)     THEN 2
+            WHEN coalesce(g.glitches, 0) > 0 THEN 1
+            ELSE 0 END AS state_rank,
+       s.last_fault_at,
+       s.job_id                 AS last_fault_job_id,   -- the job the fault sits on
+       l.job_id                 AS last_job_id,
+       l.occurred_at            AS last_job_at,
+       coalesce(g.glitches, 0)  AS last_job_glitches,
+       g.signals                AS last_job_signals,
+       coalesce(gt.glitches, 0) AS glitches,
+       a.last_event_at
+FROM machines m
+     LEFT JOIN standing s     ON s.facility_id  = m.facility_id AND s.machine_id  = m.machine_id
+     LEFT JOIN last_job l     ON l.facility_id  = m.facility_id AND l.machine_id  = m.machine_id
+     LEFT JOIN glitch g       ON g.facility_id  = l.facility_id AND g.machine_id  = l.machine_id
+                             AND g.job_id       = l.job_id
+     LEFT JOIN glitch_total gt ON gt.facility_id = m.facility_id AND gt.machine_id = m.machine_id
+     LEFT JOIN activity a     ON a.facility_id  = m.facility_id AND a.machine_id  = m.machine_id;
+
+-- ---------------------------------------------------------------------
 -- @dq
 -- Every anomaly the profile found gets a standing query, not a cleanup.
 -- ---------------------------------------------------------------------

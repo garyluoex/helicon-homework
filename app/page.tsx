@@ -1,6 +1,7 @@
 import Header from "@/app/_components/header";
 import { chrome } from "@/lib/chrome";
 import { one, query } from "@/lib/db";
+import { MACHINE_STATE } from "@/lib/format";
 import ClickRow from "@/lib/row";
 import { orderBy, Th, type Column, type SortSpec } from "@/lib/table";
 
@@ -18,10 +19,10 @@ type Kpis = {
   pressed: string; pass_units: string; fail_units: string;
   // Totals for the attention notes. Kept as their own counts rather than read
   // off the rendered rows, so the heading stays right whatever the tables show.
-  open_blocks: string; glitch_events: string; glitch_units: string;
+  open_blocks: string; glitch_events: string; units: string; flagged_units: string;
 };
 type JobRow = { job_id: string; cause: string | null; where_at: string; when_at: string; silent_days: string };
-type EquipRow = { where_at: string; signals: string; alerts: string; when_at: string; silent_days: string };
+type EquipRow = { where_at: string; state: string; problem: string; when_at: string; silent_days: string };
 
 const n = (v: string | number | null) =>
   v === null ? "—" : Number(v).toLocaleString("en-US");
@@ -42,7 +43,7 @@ export default async function Home({
     when: "last_event_at", silent: "silent_days",
   };
   const equipSpec: SortSpec = {
-    where: "where_at", signals: "signals", count: "alerts",
+    where: "where_at", state: "state_rank", problem: "problem",
     when: "last_at", silent: "silent_days",
   };
   const jobSort = orderBy(jobSpec, sp.jsort, sp.jdir, "silent", "desc");
@@ -67,8 +68,8 @@ export default async function Home({
                  group by 1 having count(*) filter (where event_type = 'job_blocked')
                             > count(*) filter (where event_type = 'job_unblocked')) b)::text as open_blocks,
               (select count(*) from events where event_type = 'sensor_glitch')::text as glitch_events,
-              (select count(distinct (facility_id, coalesce(machine_id, 'press unassigned')))
-               from events where event_type = 'sensor_glitch')::text as glitch_units
+              (select count(*) from machines)::text as units,
+              (select count(*) from machine_state where state <> 'operational')::text as flagged_units
        from events`, [rangeDays]),
 
     // A job with more blocks than unblocks never had its stop lifted. Three of
@@ -92,17 +93,21 @@ export default async function Home({
          where b.blocks > b.unblocks) r
        order by ${jobSort.sql} nulls last, job_id`),
 
+    // Every unit the machine_state view does not call operational, worst
+    // first. Equipment renders the same three states off the same view, so a
+    // unit flagged here is flagged identically there.
     query<EquipRow>(
       `with feed as (select max(occurred_at) as hi from events)
        select * from (
-         select coalesce(e.machine_id, 'press unassigned') || ' · ' || e.facility_id as where_at,
-                string_agg(distinct e.metadata ->> 'signal', ', ') as signals,
-                count(*) as alerts,
-                to_char(max(e.occurred_at), 'YYYY-MM-DD') as when_at,
-                max(e.occurred_at) as last_at,
-                floor(extract(epoch from (feed.hi - max(e.occurred_at))) / 86400) as silent_days
-         from events e, feed where e.event_type = 'sensor_glitch'
-         group by 1, feed.hi) r
+         select s.machine_id || ' · ' || s.facility_id as where_at,
+                s.state, s.state_rank,
+                case when s.state = 'non_operational' then 'machine_fault'
+                     else s.last_job_signals end as problem,
+                to_char(s.last_event_at, 'YYYY-MM-DD') as when_at,
+                s.last_event_at as last_at,
+                floor(extract(epoch from (feed.hi - s.last_event_at)) / 86400) as silent_days
+         from machine_state s, feed
+         where s.state <> 'operational') r
        order by ${equipSort.sql} nulls last, where_at`),
 
     chrome(),
@@ -121,8 +126,8 @@ export default async function Home({
     { key: "when", label: "Last event", num: true }, { key: "silent", label: "Days since update", num: true },
   ];
   const equipCols: Column[] = [
-    { key: "where", label: "Equipment" }, { key: "signals", label: "Problem" },
-    { key: "count", label: "Unresolved alerts", num: true },
+    { key: "where", label: "Equipment" }, { key: "state", label: "State" },
+    { key: "problem", label: "Problem" },
     { key: "when", label: "Last event", num: true }, { key: "silent", label: "Days since update", num: true },
   ];
 
@@ -194,7 +199,7 @@ export default async function Home({
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
             <h4 style={{ margin: 0 }}>Needs attention</h4>
             <span style={muted}>
-              {n(Number(k.open_blocks) + Number(k.glitch_events))} items &middot; open blocks and sensor anomalies
+              {n(Number(k.open_blocks) + Number(k.flagged_units))} items &middot; open blocks and units not operational
             </span>
           </div>
 
@@ -227,7 +232,8 @@ export default async function Home({
             <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
               <div style={{ fontFamily: "var(--font-heading)", fontSize: 16, letterSpacing: ".02em" }}>Equipments</div>
               <span style={muted}>
-                {n(k.glitch_events)} anomalies across {n(k.glitch_units)} units
+                {n(k.flagged_units)} of {n(k.units)} units not operational &middot;{" "}
+                {n(k.glitch_events)} sensor anomalies in the feed
               </span>
             </div>
             <div className="table-scroll">
@@ -236,15 +242,22 @@ export default async function Home({
                   <tr>{equipCols.map((c) => <Th key={c.key} col={c} active={c.key === equipSort.key} dir={equipSort.dir} href={equipHref} />)}</tr>
                 </thead>
                 <tbody>
-                  {equipRows.map((r) => (
-                    <tr key={r.where_at}>
-                      <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.where_at}</td>
-                      <td>{r.signals}</td>
-                      <td style={numeric}>{r.alerts}</td>
-                      <td style={numeric}>{r.when_at}</td>
-                      <td style={numeric}>{r.silent_days}</td>
-                    </tr>
-                  ))}
+                  {equipRows.map((r) => {
+                    const state = MACHINE_STATE[r.state] ?? MACHINE_STATE.operational;
+                    return (
+                      <tr key={r.where_at}>
+                        <td style={{ fontVariantNumeric: "tabular-nums" }}>{r.where_at}</td>
+                        <td>
+                          <span className="tag" style={{ background: state.bg, color: state.ink }}>
+                            {state.label}
+                          </span>
+                        </td>
+                        <td>{r.problem}</td>
+                        <td style={numeric}>{r.when_at}</td>
+                        <td style={numeric}>{r.silent_days}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

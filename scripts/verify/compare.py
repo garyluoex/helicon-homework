@@ -40,12 +40,12 @@ check("Home / open blocks", "row count", len(tb), len(db_b))
 for jid in sorted(tb):
     for f in ("cause", "where_at", "when_at", "silent_days"):
         check("Home / open blocks", f"{jid}.{f}", tb[jid][f], db_b.get(jid, {}).get(f))
-tg = {r["where_at"]: r for r in truth["home_glitch_rows"]}
-db_g = {r["where_at"]: r for r in db["home_glitch_rows"]}
-check("Home / glitches", "row count", len(tg), len(db_g))
+tg = {r["where_at"]: r for r in truth["home_state_rows"]}
+db_g = {r["where_at"]: r for r in db["home_state_rows"]}
+check("Home / equipment", "row count", len(tg), len(db_g))
 for m in sorted(tg):
-    for f in ("signals", "alerts", "when_at", "silent_days"):
-        check("Home / glitches", f"{m}.{f}", tg[m][f], db_g.get(m, {}).get(f))
+    for f in ("state", "problem", "when_at", "silent_days"):
+        check("Home / equipment", f"{m}.{f}", tg[m][f], db_g.get(m, {}).get(f))
 
 # jobs
 check("Jobs", "jobs total", truth["jobs_total"], db["jobs_total"])
@@ -82,7 +82,8 @@ de = {(r["facility_id"], r["machine_id"]): r for r in db["equipment_rows"]}
 check("Equipment / rows", "row count", len(truth["equipment_rows"]), len(de))
 for r in truth["equipment_rows"]:
     unit = (r["facility_id"], r["machine_id"])
-    for f in ("kind", "events", "glitches", "metric", "last_fault", "down"):
+    for f in ("kind", "events", "glitches", "metric", "state", "last_fault",
+              "last_job_id", "signal", "last_event_at", "silent_days"):
         check("Equipment / rows", f"{unit[0]}/{unit[1]}.{f}", r[f], de.get(unit, {}).get(f))
 
 # job detail

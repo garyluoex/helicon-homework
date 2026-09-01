@@ -204,7 +204,8 @@ def main():
             "fail_units": sum(e["quantity"] or 0 for e in inr if e["event_type"] == "inspection_failed"),
             "open_blocks": sum(1 for v in blocked.values() if v > 0),
             "glitch_events": len(glitches),
-            "glitch_units": len({(fac(e), e["machine_id"] or "press unassigned") for e in glitches}),
+            "units": len(machines),
+            "flagged_units": None,   # filled in once machine state is folded, below
         }
     out["home"] = blocks
 
@@ -227,19 +228,8 @@ def main():
          for jid, (b, u) in net.items() if b > u],
         key=lambda r: r["job_id"])
 
-    out["home_glitch_rows"] = []
-    g = defaultdict(list)
-    for e in events:
-        if e["event_type"] == "sensor_glitch":
-            g[f'{e["machine_id"] or "press unassigned"} · {fac(e)}'].append(e)
-    for where, es in sorted(g.items()):
-        out["home_glitch_rows"].append({
-            "where_at": where,
-            "signals": ", ".join(sorted({(e.get("metadata") or {}).get("signal") for e in es})),
-            "alerts": len(es),
-            "when_at": max(e["_at"] for e in es).strftime("%Y-%m-%d"),
-            "silent_days": math.floor((hi - max(e["_at"] for e in es)).total_seconds() / SECONDS_PER_DAY),
-        })
+    # Home's equipment table is filled from the machine state fold below, so it
+    # lists exactly the units Equipment does not call operational.
 
     # ---- jobs page, one block per tab ------------------------------------
     TABS = {"in-progress": ["in_progress", "blocked", "on_hold"],
@@ -331,22 +321,43 @@ def main():
     out["part_rows"] = prows
 
     # ---- equipment -------------------------------------------------------
-    # Operational state, the same rule the Equipment page applies: a unit reads
-    # by its latest machine_fault block alone, and that block stands until the
-    # unit is seen working again -- the job's own unblock, or any job started
-    # on that unit since. A fault names a unit, never a bare code, so one site
-    # going down says nothing about the other's machine of the same name.
+    # The machine_state view, in Python. Three states in precedence order:
+    # non_operational while the unit's latest machine_fault block still stands,
+    # degraded while the job it was last put on carries a sensor glitch,
+    # operational otherwise.
+    #
+    # Two rules, both matching the view. A signal names its unit as
+    # (facility, code) and falls back to the press its job started on when it
+    # names no machine at all; "seen working again" is the unit's next
+    # assignment, which is job_started on a press, an inspection on a QC
+    # station and tool_ready on a tooling cell.
+    ASSIGN = ("job_started", "tool_ready", "inspection_passed", "inspection_failed")
+
+    def unit_of(e):
+        j = jobs.get(e["job_id"], {})
+        code = e["machine_id"] or j.get("machine_id")
+        return None if code is None else (fac(e) or j.get("facility_id"), code)
+
+    assigned = defaultdict(list)
+    for e in events:
+        if e["event_type"] in ASSIGN and e["machine_id"]:
+            assigned[(fac(e), e["machine_id"])].append(e)
+
+    on_job, glitches_ever = defaultdict(list), defaultdict(int)
+    for e in events:
+        if e["event_type"] == "sensor_glitch" and unit_of(e):
+            on_job[(unit_of(e), e["job_id"])].append(e)
+            glitches_ever[unit_of(e)] += 1
+
     latest_fault = {}
     for e in events:
         if e["event_type"] != "job_blocked":
             continue
         if (e.get("metadata") or {}).get("reason") != "machine_fault":
             continue
-        j = jobs.get(e["job_id"], {})
-        code = e["machine_id"] or j.get("machine_id")
-        if code is None:
+        unit = unit_of(e)
+        if unit is None:
             continue
-        unit = (fac(e) or j.get("facility_id"), code)
         key = (e["_at"], e["event_id"])
         if unit not in latest_fault or key > latest_fault[unit][0]:
             latest_fault[unit] = (key, e["job_id"])
@@ -354,32 +365,52 @@ def main():
     def is_down(unit, key, job_id):
         unblocked = any(e["event_type"] == "job_unblocked" and e["job_id"] == job_id
                         and (e["_at"], e["event_id"]) > key for e in events)
-        restarted = any(e["event_type"] == "job_started"
-                        and (fac(e), e["machine_id"]) == unit
-                        and (e["_at"], e["event_id"]) > key for e in events)
-        return not (unblocked or restarted)
+        reassigned = any((e["_at"], e["event_id"]) > key for e in assigned[unit])
+        return not (unblocked or reassigned)
 
     erows = []
     for facility, m in sorted(machines):
+        unit = (facility, m)
         es = [e for e in events if e["machine_id"] == m and fac(e) == facility]
         kind = m.split("_")[0]
         metric = (len({e["job_id"] for e in es if e["event_type"] == "job_started"}) if kind == "press"
                   else sum(e["quantity"] or 0 for e in es
                            if e["event_type"] in ("inspection_passed", "inspection_failed")) if kind == "qc"
                   else sum(1 for e in es if e["event_type"] == "tool_ready"))
-        fault = latest_fault.get((facility, m))
+        fault = latest_fault.get(unit)
+        down = is_down(unit, *fault) if fault else False
+        last_job = assigned[unit][-1]["job_id"] if assigned[unit] else None
+        glitched = on_job.get((unit, last_job), []) if last_job else []
         erows.append({
             "facility_id": facility, "machine_id": m, "kind": kind, "events": len(es),
-            "glitches": sum(1 for e in es if e["event_type"] == "sensor_glitch"),
+            "glitches": glitches_ever.get(unit, 0),
             "metric": metric,
+            "state": "non_operational" if down else "degraded" if glitched else "operational",
             "last_fault": fault[0][0].strftime("%Y-%m-%d") if fault else None,
-            "down": is_down((facility, m), *fault) if fault else False,
+            "last_job_id": last_job,
+            "signal": ", ".join(sorted({(e.get("metadata") or {}).get("signal")
+                                        for e in glitched})) or None,
+            "last_event_at": max(e["_at"] for e in es).strftime("%Y-%m-%d") if es else None,
+            "silent_days": (math.floor((hi - max(e["_at"] for e in es)).total_seconds()
+                                       / SECONDS_PER_DAY) if es else None),
         })
     out["equipment_rows"] = erows
+
+    # Home lists every unit the fold does not call operational, worst first.
+    out["home_state_rows"] = [
+        {"where_at": f'{r["machine_id"]} · {r["facility_id"]}',
+         "state": r["state"],
+         "problem": "machine_fault" if r["state"] == "non_operational" else r["signal"],
+         "when_at": r["last_event_at"],
+         "silent_days": r["silent_days"]}
+        for r in erows if r["state"] != "operational"]
+    for block in out["home"].values():
+        block["flagged_units"] = len(out["home_state_rows"])
     out["equipment_kpis"] = {
         "units": len(machines),
         "codes": len({m for _, m in machines}),
         "locations": len({f for f, _ in machines}),
+        "flagged": sum(1 for r in erows if r["state"] != "operational"),
     }
 
     # ---- a sample of job detail pages ------------------------------------

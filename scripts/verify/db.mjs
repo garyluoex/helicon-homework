@@ -41,8 +41,8 @@ for (const days of [7, 30, 42]) {
               group by 1 having count(*) filter (where event_type = 'job_blocked')
                          > count(*) filter (where event_type = 'job_unblocked')) b)::int as open_blocks,
            (select count(*) from events where event_type = 'sensor_glitch')::int as glitch_events,
-           (select count(distinct (facility_id, coalesce(machine_id, 'press unassigned')))
-            from events where event_type = 'sensor_glitch')::int as glitch_units
+           (select count(*) from machines)::int as units,
+           (select count(*) from machine_state where state <> 'operational')::int as flagged_units
     from events`, [days]);
 }
 
@@ -62,15 +62,16 @@ out.home_open_block_rows = await q(`
   from b join jobs j using (job_id), feed
   where b.blocks > b.unblocks order by b.job_id`);
 
-out.home_glitch_rows = await q(`
+out.home_state_rows = await q(`
   with feed as (select max(occurred_at) as hi from events)
-  select coalesce(e.machine_id, 'press unassigned') || ' · ' || e.facility_id as where_at,
-         string_agg(distinct e.metadata ->> 'signal', ', ') as signals,
-         count(*)::int as alerts,
-         to_char(max(e.occurred_at), 'YYYY-MM-DD') as when_at,
-         floor(extract(epoch from (feed.hi - max(e.occurred_at))) / 86400)::int as silent_days
-  from events e, feed where e.event_type = 'sensor_glitch'
-  group by 1, feed.hi order by 1`);
+  select s.machine_id || ' · ' || s.facility_id as where_at,
+         s.state,
+         case when s.state = 'non_operational' then 'machine_fault'
+              else s.last_job_signals end as problem,
+         to_char(s.last_event_at, 'YYYY-MM-DD') as when_at,
+         floor(extract(epoch from (feed.hi - s.last_event_at)) / 86400)::int as silent_days
+  from machine_state s, feed
+  where s.state <> 'operational' order by 1`);
 
 // ---- jobs (app/jobs/page.tsx) ----------------------------------------
 const TABS = {
@@ -146,54 +147,37 @@ const METRIC = {
   qc: "coalesce(sum(e.quantity) filter (where e.event_type in ('inspection_passed','inspection_failed')), 0)",
   tooling: "count(*) filter (where e.event_type = 'tool_ready')",
 };
-// Operational state, mirroring the page: latest machine_fault per unit, still
-// standing unless the job was unblocked or the unit took another job since.
-const STATE = `
-  fault as (
-    select distinct on (facility_id, machine_id)
-           facility_id, machine_id, job_id, occurred_at, event_id
-    from (select coalesce(e.facility_id, j.facility_id) as facility_id,
-                 coalesce(e.machine_id, j.machine_id) as machine_id,
-                 e.job_id, e.occurred_at, e.event_id
-          from events e left join jobs j using (job_id)
-          where e.event_type = 'job_blocked'
-            and e.metadata ->> 'reason' = 'machine_fault') f
-    where machine_id is not null
-    order by facility_id, machine_id, occurred_at desc, event_id desc
-  ),
-  state as (
-    select f.facility_id, f.machine_id, f.occurred_at as last_fault_at,
-           not (exists (select 1 from events u
-                        where u.job_id = f.job_id and u.event_type = 'job_unblocked'
-                          and (u.occurred_at, u.event_id) > (f.occurred_at, f.event_id))
-             or exists (select 1 from events s
-                        where s.facility_id = f.facility_id and s.machine_id = f.machine_id
-                          and s.event_type = 'job_started'
-                          and (s.occurred_at, s.event_id) > (f.occurred_at, f.event_id))) as down
-    from fault f
-  )`;
+// Equipment reads machine_state; so does this, so the two cannot disagree by
+// construction. What is checked here is that the view's fold and truth.py's
+// fold of the same raw feed land on the same unit states.
 out.equipment_rows = [];
 for (const [kind, metric] of Object.entries(METRIC)) {
   const rows = await q(`
-    with ${STATE}
-    select m.facility_id, m.machine_id, m.kind::text as kind,
+    with feed as (select max(occurred_at) as hi from events)
+    select s.facility_id, s.machine_id, s.kind::text as kind,
            count(e.event_id)::int as events,
-           count(*) filter (where e.event_type = 'sensor_glitch')::int as glitches,
-           ${metric}::int as metric,
-           to_char(max(s.last_fault_at), 'YYYY-MM-DD') as last_fault,
-           coalesce(bool_or(s.down), false)            as down
-    from machines m
-      left join events e on e.facility_id = m.facility_id and e.machine_id = m.machine_id
-      left join state s  on s.facility_id = m.facility_id and s.machine_id = m.machine_id
-    where m.kind = $1::machine_kind
-    group by m.facility_id, m.machine_id, s.down
-    order by m.facility_id, m.machine_id`, [kind]);
+           s.glitches::int        as glitches,
+           ${metric}::int         as metric,
+           s.state,
+           to_char(s.last_fault_at, 'YYYY-MM-DD') as last_fault,
+           s.last_job_id,
+           s.last_job_signals as signal,
+           to_char(s.last_event_at, 'YYYY-MM-DD') as last_event_at,
+           floor(extract(epoch from (feed.hi - s.last_event_at)) / 86400)::int as silent_days
+    from machine_state s
+      left join events e on e.facility_id = s.facility_id and e.machine_id = s.machine_id
+      cross join feed
+    where s.kind = $1::machine_kind
+    group by s.facility_id, s.machine_id, s.kind, s.glitches, s.state,
+             s.last_fault_at, s.last_job_id, s.last_job_signals, s.last_event_at, feed.hi
+    order by s.facility_id, s.machine_id`, [kind]);
   out.equipment_rows.push(...rows);
 }
 out.equipment_kpis = await one(`
   select count(*)::int                    as units,
          count(distinct machine_id)::int  as codes,
-         count(distinct facility_id)::int as locations
+         count(distinct facility_id)::int as locations,
+         (select count(*) from machine_state where state <> 'operational')::int as flagged
   from machines`);
 
 // ---- job detail (app/jobs/[jobId]/page.tsx) --------------------------

@@ -65,6 +65,11 @@ def n(v):
     return f"{int(v):,}"
 
 
+# The three labels lib/format.ts renders for the machine_state fold.
+STATE_LABEL = {"operational": "Operational", "degraded": "Degraded",
+               "non_operational": "Non-operational"}
+
+
 # ---------------- Home -------------------------------------------------
 for f, days in (("home.html", "42"), ("home7.html", "7"), ("home30.html", "30")):
     h, t = page(f), truth["home"][days]
@@ -81,12 +86,16 @@ for f, days in (("home.html", "42"), ("home7.html", "7"), ("home30.html", "30"))
     ft = flat(h)
     check(label, "window", f"{t['window_start']} to {t['feed_end']} · {t['window_days']} days",
           re.search(r"[\d-]{10} to [\d-]{10} · \d+ days", ft).group(0))
-    check(label, "attention items", f"{n(t['open_blocks'] + t['glitch_events'])} items · open blocks and sensor anomalies",
-          re.search(r"([\d,]+) items · open blocks and sensor anomalies", ft).group(0))
+    check(label, "attention items",
+          f"{n(t['open_blocks'] + t['flagged_units'])} items · open blocks and units not operational",
+          re.search(r"([\d,]+) items · open blocks and units not operational", ft).group(0))
     check(label, "open blocks caption", f"{n(t['open_blocks'])} jobs with more blocks than unblocks",
           re.search(r"([\d,]+) jobs with more blocks than unblocks", ft).group(0))
-    check(label, "glitch caption", f"{n(t['glitch_events'])} anomalies across {n(t['glitch_units'])} units",
-          re.search(r"([\d,]+) anomalies across ([\d,]+) units", ft).group(0))
+    check(label, "equipment caption",
+          f"{n(t['flagged_units'])} of {n(t['units'])} units not operational · "
+          f"{n(t['glitch_events'])} sensor anomalies in the feed",
+          re.search(r"([\d,]+) of ([\d,]+) units not operational · ([\d,]+) sensor anomalies in the feed",
+                    ft).group(0))
 
 hb, hg = tables(page("home.html"))[:2]
 tb = {r["job_id"]: r for r in truth["home_open_block_rows"]}
@@ -95,12 +104,12 @@ for r in hb[1:]:
     t = tb[r[0]]
     check("Home / open blocks", f"{r[0]} row",
           [r[0], t["cause"] or "unstated cause", t["where_at"], t["when_at"], str(t["silent_days"])], r)
-tg = {r["where_at"]: r for r in truth["home_glitch_rows"]}
-check("Home / glitches", "row count", len(tg), len(hg) - 1)
+tg = {r["where_at"]: r for r in truth["home_state_rows"]}
+check("Home / equipment", "row count", len(tg), len(hg) - 1)
 for r in hg[1:]:
     t = tg[r[0]]
-    check("Home / glitches", f"{r[0]} row",
-          [r[0], t["signals"], str(t["alerts"]), t["when_at"], str(t["silent_days"])], r)
+    check("Home / equipment", f"{r[0]} row",
+          [r[0], STATE_LABEL[t["state"]], t["problem"], t["when_at"], str(t["silent_days"])], r)
 
 # ---------------- Jobs -------------------------------------------------
 TAB_FILE = {"in-progress": "jobs_inprogress.html", "pending": "jobs_pending.html",
@@ -192,14 +201,17 @@ for kind, f in EQ.items():
     for r in want:
         unit = (r["facility_id"], r["machine_id"])
         check(f"Equipment / {kind}", f"{unit[0]}/{unit[1]}",
-              [r["facility_id"], r["machine_id"],
-               "Non-operational" if r["down"] else "Operational", r["last_fault"] or "—",
+              [r["facility_id"], r["machine_id"], STATE_LABEL[r["state"]],
+               r["signal"] or "—", r["last_fault"] or "—",
                n(r["events"]), n(r["metric"]), n(r["glitches"])],
               erows[unit])
     kp = truth["equipment_kpis"]
+    flagged = sum(1 for r in truth["equipment_rows"] if r["state"] != "operational")
     check(f"Equipment / {kind}", "unit caption",
-          f"{kp['codes']} machine codes across {kp['locations']} locations, {kp['units']} units in all",
-          re.search(r"(\d+) machine codes across (\d+) locations, (\d+) units in all", flat(h)).group(0))
+          f"{kp['codes']} machine codes across {kp['locations']} locations, "
+          f"{kp['units']} units in all, {flagged} not operational",
+          re.search(r"(\d+) machine codes across (\d+) locations, (\d+) units in all, "
+                    r"(\d+) not operational", flat(h)).group(0))
 
 # ---------------- Job detail ------------------------------------------
 for jid in ("job_0080", "job_0166", "job_0293"):
